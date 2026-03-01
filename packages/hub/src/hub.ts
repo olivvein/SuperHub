@@ -40,6 +40,12 @@ interface SessionQueueItem {
   critical: boolean;
 }
 
+interface PreparedEnvelope {
+  raw: string;
+  bytes: number;
+  shouldTrack: boolean;
+}
+
 interface SessionState {
   sessionId: string;
   socket: WebSocket;
@@ -55,11 +61,12 @@ interface SessionState {
   subscriptions: Map<string, SubscribePayload>;
   stateWatches: Map<string, string>;
   recentIds: Map<string, number>;
+  lastDedupSweepTs: number;
   queue: SessionQueueItem[];
   queueBytes: number;
   ip: string;
-  rateWindowMinute: number;
-  rateWindowCount: number;
+  rateTokens: number;
+  rateLastRefillTs: number;
 }
 
 interface PendingRpc {
@@ -126,6 +133,7 @@ interface PairPayload {
 
 const DASHBOARD_STREAM_EVENT_NAME = "hub.dashboard";
 const DASHBOARD_STREAM_INTERVAL_MS = 500;
+const DEDUP_SWEEP_INTERVAL_MS = 1000;
 
 export interface HubRuntime {
   app: FastifyInstance;
@@ -155,6 +163,7 @@ export async function createHubRuntime(config: HubConfig): Promise<HubRuntime> {
   const inspector: InspectorRecord[] = [];
   const messageNameCounter = new Map<string, number>();
   const clientSessionHistory = new Map<string, string>();
+  const queuedSessionIds = new Set<string>();
 
   const metrics: Metrics = {
     messagesIn: {
@@ -651,11 +660,12 @@ export async function createHubRuntime(config: HubConfig): Promise<HubRuntime> {
         subscriptions: new Map(),
         stateWatches: new Map(),
         recentIds: new Map(),
+        lastDedupSweepTs: now,
         queue: [],
         queueBytes: 0,
         ip: request.ip,
-        rateWindowMinute: minuteWindow(now),
-        rateWindowCount: 0
+        rateTokens: Math.max(0, config.limits.rateLimitPerMinute),
+        rateLastRefillTs: now
       };
 
       sessions.set(session.sessionId, session);
@@ -709,8 +719,16 @@ export async function createHubRuntime(config: HubConfig): Promise<HubRuntime> {
   }, config.limits.heartbeatIntervalMs);
 
   const queueFlushTimer = setInterval(() => {
-    for (const session of sessions.values()) {
+    for (const sessionId of queuedSessionIds) {
+      const session = sessions.get(sessionId);
+      if (!session) {
+        queuedSessionIds.delete(sessionId);
+        continue;
+      }
       flushSessionQueue(session);
+      if (session.queue.length === 0 || session.socket.readyState !== WebSocket.OPEN) {
+        queuedSessionIds.delete(sessionId);
+      }
     }
   }, 50);
 
@@ -874,9 +892,13 @@ export async function createHubRuntime(config: HubConfig): Promise<HubRuntime> {
       logger.warn("ws.rate_limit", {
         sessionId: session.sessionId,
         clientId: session.clientId,
-        ip: session.ip
+        ip: session.ip,
+        rateLimitPerMinute: config.limits.rateLimitPerMinute
       });
-      const response = errorEnvelope("RATE_LIMIT", "Rate limit exceeded", session.clientId, { clientId: session.clientId });
+      const response = errorEnvelope("RATE_LIMIT", "Rate limit exceeded", session.clientId, {
+        clientId: session.clientId,
+        rateLimitPerMinute: config.limits.rateLimitPerMinute
+      });
       enqueueForSession(session, response, true);
       return;
     }
@@ -1202,8 +1224,12 @@ export async function createHubRuntime(config: HubConfig): Promise<HubRuntime> {
 
   function routePublishLike(sourceSession: SessionState | null, envelope: HubEnvelope): void {
     const recipients = resolveRecipientsForPublish(envelope, sourceSession?.sessionId);
+    if (recipients.length === 0) {
+      return;
+    }
+    const prepared = recipients.length > 1 ? prepareEnvelopeForSend(envelope) : null;
     for (const recipient of recipients) {
-      enqueueForSession(recipient, envelope, false);
+      enqueueForSession(recipient, envelope, false, prepared);
     }
   }
 
@@ -1444,22 +1470,36 @@ export async function createHubRuntime(config: HubConfig): Promise<HubRuntime> {
       }
     });
 
+    const recipients: SessionState[] = [];
     for (const session of sessions.values()) {
       if (!matchesStateWatch(session, path)) {
         continue;
       }
-      enqueueForSession(session, envelope, false);
+      recipients.push(session);
+    }
+
+    if (recipients.length === 0) {
+      return;
+    }
+
+    const prepared = recipients.length > 1 ? prepareEnvelopeForSend(envelope) : null;
+    for (const recipient of recipients) {
+      enqueueForSession(recipient, envelope, false, prepared);
     }
   }
 
-  function enqueueForSession(session: SessionState, envelope: HubEnvelope, critical: boolean): void {
+  function enqueueForSession(
+    session: SessionState,
+    envelope: HubEnvelope,
+    critical: boolean,
+    prepared: PreparedEnvelope | null = null
+  ): void {
     if (session.socket.readyState !== WebSocket.OPEN) {
       return;
     }
 
-    const shouldTrack = shouldTrackInternalEnvelope(envelope);
-    const raw = JSON.stringify(envelope);
-    const bytes = Buffer.byteLength(raw, "utf8");
+    const outbound = prepared ?? prepareEnvelopeForSend(envelope);
+    const { raw, bytes, shouldTrack } = outbound;
     if (bytes > config.limits.maxMessageSizeBytes) {
       metrics.droppedMessages += 1;
       logger.warn("ws.outbound_too_large", {
@@ -1539,6 +1579,8 @@ export async function createHubRuntime(config: HubConfig): Promise<HubRuntime> {
       }
       return;
     }
+
+    queuedSessionIds.add(session.sessionId);
   }
 
   function flushSessionQueue(session: SessionState): void {
@@ -1576,6 +1618,7 @@ export async function createHubRuntime(config: HubConfig): Promise<HubRuntime> {
     }
 
     sessions.delete(sessionId);
+    queuedSessionIds.delete(sessionId);
     detachSessionFromIndexes(session);
 
     if (session.serviceName) {
@@ -1752,23 +1795,37 @@ export async function createHubRuntime(config: HubConfig): Promise<HubRuntime> {
   }
 
   function incrementSessionRate(session: SessionState): boolean {
-    const currentMinute = minuteWindow(nowEpochMs());
-    if (session.rateWindowMinute !== currentMinute) {
-      session.rateWindowMinute = currentMinute;
-      session.rateWindowCount = 0;
+    const limitPerMinute = config.limits.rateLimitPerMinute;
+    if (limitPerMinute <= 0) {
+      return true;
     }
 
-    session.rateWindowCount += 1;
-    return session.rateWindowCount <= config.limits.rateLimitPerMinute;
+    const now = nowEpochMs();
+    const elapsedMs = Math.max(0, now - session.rateLastRefillTs);
+    if (elapsedMs > 0) {
+      const refill = (limitPerMinute * elapsedMs) / 60000;
+      session.rateTokens = Math.min(limitPerMinute, session.rateTokens + refill);
+      session.rateLastRefillTs = now;
+    }
+
+    if (session.rateTokens < 1) {
+      return false;
+    }
+
+    session.rateTokens -= 1;
+    return true;
   }
 
   function isDuplicateMessage(session: SessionState, messageId: string): boolean {
     const now = nowEpochMs();
 
-    for (const [id, ts] of session.recentIds.entries()) {
-      if (now - ts > config.limits.dedupWindowMs) {
-        session.recentIds.delete(id);
+    if (now - session.lastDedupSweepTs >= DEDUP_SWEEP_INTERVAL_MS) {
+      for (const [id, ts] of session.recentIds.entries()) {
+        if (now - ts > config.limits.dedupWindowMs) {
+          session.recentIds.delete(id);
+        }
       }
+      session.lastDedupSweepTs = now;
     }
 
     if (session.recentIds.has(messageId)) {
@@ -1814,6 +1871,15 @@ export async function createHubRuntime(config: HubConfig): Promise<HubRuntime> {
     return envelope.name !== DASHBOARD_STREAM_EVENT_NAME;
   }
 
+  function prepareEnvelopeForSend(envelope: HubEnvelope): PreparedEnvelope {
+    const raw = JSON.stringify(envelope);
+    return {
+      raw,
+      bytes: Buffer.byteLength(raw, "utf8"),
+      shouldTrack: shouldTrackInternalEnvelope(envelope)
+    };
+  }
+
   function pushRpcLatency(latencyMs: number): void {
     metrics.rpcLatenciesMs.push(latencyMs);
     if (metrics.rpcLatenciesMs.length > 5000) {
@@ -1826,6 +1892,7 @@ export async function createHubRuntime(config: HubConfig): Promise<HubRuntime> {
       session.socket.close(1001, "Hub shutdown");
     }
     sessions.clear();
+    queuedSessionIds.clear();
   }
 
   const runtime: HubRuntime = {
@@ -1996,10 +2063,6 @@ async function generateQrDataUrl(content: string): Promise<string | null> {
   } catch {
     return null;
   }
-}
-
-function minuteWindow(ts: number): number {
-  return Math.floor(ts / 60000);
 }
 
 function percentile(sortedValues: number[], percentileValue: number): number {

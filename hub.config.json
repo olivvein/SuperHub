@@ -28,7 +28,7 @@
     "heartbeatIntervalMs": 10000,
     "heartbeatTimeoutMs": 30000,
     "inspectorMaxMessages": 500,
-    "rateLimitPerMinute": 1800
+    "rateLimitPerMinute": 120000
   },
   "validation": {
     "mode": "reject"
@@ -41,7 +41,9 @@
     "enabled": true,
     "sqlitePath": "packages/hub/data/hub.sqlite",
     "auditEnabled": true,
-    "auditTtlDays": 14
+    "auditTtlDays": 14,
+    "stateSnapshotFlushMs": 250,
+    "maxPendingStateSnapshots": 5000
   },
   "staticHosting": {
     "consoleDir": "packages/hub/public/console",

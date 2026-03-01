@@ -26,7 +26,7 @@ const config = {
     heartbeatIntervalMs: 10_000,
     heartbeatTimeoutMs: 30_000,
     inspectorMaxMessages: 500,
-    rateLimitPerMinute: 1_800
+    rateLimitPerMinute: 120_000
   },
   validation: {
     mode: process.env.NODE_ENV === "production" ? "warn" : "reject"
@@ -39,7 +39,9 @@ const config = {
     enabled: true,
     sqlitePath: path.resolve(repoRoot, "packages/hub/data/hub.sqlite"),
     auditEnabled: true,
-    auditTtlDays: 14
+    auditTtlDays: 14,
+    stateSnapshotFlushMs: 250,
+    maxPendingStateSnapshots: 5000
   },
   staticHosting: {
     consoleDir: path.resolve(repoRoot, "packages/hub/public/console"),

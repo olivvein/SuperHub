@@ -148,6 +148,10 @@ npm run client:dist
 
 - Delivery pub/sub en best-effort, ordre global non garanti.
 - Backpressure par session: buffer borné + drop quand surcharge.
+- Optimisation flux haute fréquence:
+  - sérialisation WS mutualisée pour broadcasts
+  - snapshots state SQLite coalescés (flush périodique) au lieu d'un write par update
+  - rate limit token-bucket + `rateLimitPerMinute` par défaut à `120000` (`0` pour désactiver)
 - Console:
   - state viewer realtime via `state_patch` WS
   - dashboard realtime via event `hub.dashboard` WS

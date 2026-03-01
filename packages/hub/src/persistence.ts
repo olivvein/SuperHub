@@ -7,6 +7,8 @@ export interface PersistenceConfig {
   sqlitePath: string;
   auditEnabled: boolean;
   auditTtlDays: number;
+  stateSnapshotFlushMs?: number;
+  maxPendingStateSnapshots?: number;
 }
 
 export interface PersistedPresence {
@@ -24,8 +26,20 @@ export interface PersistedPresence {
 
 export class HubPersistence {
   private db: Database.Database | null = null;
+  private upsertPresenceStmt: Database.Statement | null = null;
+  private upsertStateSnapshotStmt: Database.Statement | null = null;
+  private insertAuditStmt: Database.Statement | null = null;
+  private vacuumAuditStmt: Database.Statement | null = null;
+  private flushStateSnapshotsTx: ((rows: Array<{ path: string; value_json: string; updated_ts: number }>) => void) | null = null;
+  private stateSnapshotFlushTimer: ReturnType<typeof setInterval> | null = null;
+  private readonly pendingStateSnapshots = new Map<string, { value_json: string; updated_ts: number }>();
+  private readonly stateSnapshotFlushMs: number;
+  private readonly maxPendingStateSnapshots: number;
 
   constructor(private readonly config: PersistenceConfig) {
+    this.stateSnapshotFlushMs = Math.max(25, config.stateSnapshotFlushMs ?? 250);
+    this.maxPendingStateSnapshots = Math.max(100, config.maxPendingStateSnapshots ?? 5000);
+
     if (!config.enabled) {
       return;
     }
@@ -33,12 +47,30 @@ export class HubPersistence {
     const dir = path.dirname(config.sqlitePath);
     fs.mkdirSync(dir, { recursive: true });
     this.db = new Database(config.sqlitePath);
+    this.configureDatabase();
     this.migrate();
+    this.prepareStatements();
+
+    this.stateSnapshotFlushTimer = setInterval(() => {
+      this.flushStateSnapshots(false);
+    }, this.stateSnapshotFlushMs);
+    this.stateSnapshotFlushTimer.unref?.();
   }
 
   close(): void {
+    if (this.stateSnapshotFlushTimer) {
+      clearInterval(this.stateSnapshotFlushTimer);
+      this.stateSnapshotFlushTimer = null;
+    }
+
+    this.flushStateSnapshots(true);
     this.db?.close();
     this.db = null;
+    this.upsertPresenceStmt = null;
+    this.upsertStateSnapshotStmt = null;
+    this.insertAuditStmt = null;
+    this.vacuumAuditStmt = null;
+    this.flushStateSnapshotsTx = null;
   }
 
   loadSnapshots(): Array<{ path: string; value: unknown }> {
@@ -58,13 +90,75 @@ export class HubPersistence {
   }
 
   upsertPresence(entry: PersistedPresence): void {
+    if (!this.db || !this.upsertPresenceStmt) {
+      return;
+    }
+
+    this.upsertPresenceStmt.run({
+      ...entry,
+      provides_json: JSON.stringify(entry.provides),
+      consumes_json: JSON.stringify(entry.consumes),
+      tags_json: JSON.stringify(entry.tags),
+      online: entry.online ? 1 : 0
+    });
+  }
+
+  saveStateSnapshot(path: string, value: unknown, updatedTs: number): void {
     if (!this.db) {
       return;
     }
 
-    this.db
-      .prepare(
-        `
+    this.pendingStateSnapshots.set(path, {
+      value_json: JSON.stringify(value),
+      updated_ts: updatedTs
+    });
+
+    if (this.pendingStateSnapshots.size >= this.maxPendingStateSnapshots) {
+      this.flushStateSnapshots(false);
+    }
+  }
+
+  insertAudit(event: string, payload: unknown, ts: number): void {
+    if (!this.db || !this.config.auditEnabled || !this.insertAuditStmt) {
+      return;
+    }
+
+    this.insertAuditStmt.run({
+      ts,
+      event,
+      payload_json: JSON.stringify(payload)
+    });
+  }
+
+  vacuumAudit(nowTs: number): void {
+    if (!this.db || !this.config.auditEnabled || !this.vacuumAuditStmt) {
+      return;
+    }
+
+    const threshold = nowTs - this.config.auditTtlDays * 24 * 60 * 60 * 1000;
+    this.vacuumAuditStmt.run(threshold);
+  }
+
+  private configureDatabase(): void {
+    if (!this.db) {
+      return;
+    }
+
+    try {
+      this.db.pragma("journal_mode = WAL");
+      this.db.pragma("synchronous = NORMAL");
+    } catch {
+      // Keep defaults when pragmas are not available.
+    }
+  }
+
+  private prepareStatements(): void {
+    if (!this.db) {
+      return;
+    }
+
+    this.upsertPresenceStmt = this.db.prepare(
+      `
       INSERT INTO services_last (
         service_name,
         client_id,
@@ -99,24 +193,10 @@ export class HubPersistence {
         last_seen_ts = excluded.last_seen_ts,
         online = excluded.online
     `
-      )
-      .run({
-        ...entry,
-        provides_json: JSON.stringify(entry.provides),
-        consumes_json: JSON.stringify(entry.consumes),
-        tags_json: JSON.stringify(entry.tags),
-        online: entry.online ? 1 : 0
-      });
-  }
+    );
 
-  saveStateSnapshot(path: string, value: unknown, updatedTs: number): void {
-    if (!this.db) {
-      return;
-    }
-
-    this.db
-      .prepare(
-        `
+    this.upsertStateSnapshotStmt = this.db.prepare(
+      `
       INSERT INTO state_snapshot(path, value_json, updated_ts)
       VALUES (@path, @value_json, @updated_ts)
       ON CONFLICT(path)
@@ -124,40 +204,25 @@ export class HubPersistence {
         value_json = excluded.value_json,
         updated_ts = excluded.updated_ts
     `
-      )
-      .run({
-        path,
-        value_json: JSON.stringify(value),
-        updated_ts: updatedTs
-      });
-  }
+    );
 
-  insertAudit(event: string, payload: unknown, ts: number): void {
-    if (!this.db || !this.config.auditEnabled) {
-      return;
-    }
+    this.flushStateSnapshotsTx = this.db.transaction((rows: Array<{ path: string; value_json: string; updated_ts: number }>) => {
+      if (!this.upsertStateSnapshotStmt) {
+        return;
+      }
+      for (const row of rows) {
+        this.upsertStateSnapshotStmt.run(row);
+      }
+    });
 
-    this.db
-      .prepare(
-        `
+    this.insertAuditStmt = this.db.prepare(
+      `
       INSERT INTO audit(ts, event, payload_json)
       VALUES (@ts, @event, @payload_json)
     `
-      )
-      .run({
-        ts,
-        event,
-        payload_json: JSON.stringify(payload)
-      });
-  }
+    );
 
-  vacuumAudit(nowTs: number): void {
-    if (!this.db || !this.config.auditEnabled) {
-      return;
-    }
-
-    const threshold = nowTs - this.config.auditTtlDays * 24 * 60 * 60 * 1000;
-    this.db.prepare("DELETE FROM audit WHERE ts < ?").run(threshold);
+    this.vacuumAuditStmt = this.db.prepare("DELETE FROM audit WHERE ts < ?");
   }
 
   private migrate(): void {
@@ -195,5 +260,32 @@ export class HubPersistence {
 
       CREATE INDEX IF NOT EXISTS idx_audit_ts ON audit(ts);
     `);
+  }
+
+  private flushStateSnapshots(throwOnError: boolean): void {
+    if (!this.db || !this.flushStateSnapshotsTx || this.pendingStateSnapshots.size === 0) {
+      return;
+    }
+
+    const rows = Array.from(this.pendingStateSnapshots.entries()).map(([path, value]) => ({
+      path,
+      value_json: value.value_json,
+      updated_ts: value.updated_ts
+    }));
+    this.pendingStateSnapshots.clear();
+
+    try {
+      this.flushStateSnapshotsTx(rows);
+    } catch (error) {
+      for (const row of rows) {
+        this.pendingStateSnapshots.set(row.path, {
+          value_json: row.value_json,
+          updated_ts: row.updated_ts
+        });
+      }
+      if (throwOnError) {
+        throw error;
+      }
+    }
   }
 }

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { closeSocket, connectWsClient, delay, sendEnvelope, startHubTestServer, waitForMessage } from "./helpers/hub-test-utils.mjs";
+import { closeSocket, collectMessages, connectWsClient, delay, sendEnvelope, startHubTestServer, waitForMessage } from "./helpers/hub-test-utils.mjs";
 
 test("hub routes pub/sub events between clients", async (t) => {
   const hub = await startHubForTest(t);
@@ -144,6 +144,63 @@ test("hub propagates state watch updates", async (t) => {
   );
 
   assert.equal(patch.payload.value.trackId, "track-watch");
+});
+
+test("hub handles high-frequency state watch updates", async (t) => {
+  const hub = await startHubForTest(t);
+  if (!hub) {
+    return;
+  }
+  t.after(async () => {
+    await hub.stop();
+  });
+
+  const watcher = await connectWsClient({ wsUrl: hub.wsUrl, clientId: "watcher-fast" });
+  const setter = await connectWsClient({ wsUrl: hub.wsUrl, clientId: "setter-fast" });
+
+  t.after(async () => {
+    await closeSocket(watcher);
+    await closeSocket(setter);
+  });
+
+  sendEnvelope(watcher, {
+    type: "cmd",
+    name: "state_watch",
+    source: { clientId: "watcher-fast" },
+    target: { serviceName: "hub" },
+    schemaVersion: 1,
+    payload: {
+      watchId: "watch-fast",
+      prefix: "state/iss"
+    }
+  });
+  await delay(30);
+
+  const burstCount = 100;
+  const collectedPromise = collectMessages(
+    watcher,
+    (candidate) => candidate.type === "state_patch" && candidate.payload?.path === "state/iss/position",
+    burstCount,
+    3000
+  );
+
+  for (let seq = 0; seq < burstCount; seq += 1) {
+    sendEnvelope(setter, {
+      type: "cmd",
+      name: "state_set",
+      source: { clientId: "setter-fast" },
+      target: { serviceName: "hub" },
+      schemaVersion: 1,
+      payload: {
+        path: "state/iss/position",
+        value: { seq }
+      }
+    });
+  }
+
+  const messages = await collectedPromise;
+  assert.equal(messages.length, burstCount);
+  assert.equal(messages[messages.length - 1].payload.value.seq, burstCount - 1);
 });
 
 test("hub increments reconnect metric for same clientId", async (t) => {

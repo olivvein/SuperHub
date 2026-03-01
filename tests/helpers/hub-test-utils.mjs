@@ -141,6 +141,46 @@ export async function waitForMessage(socket, predicate, timeoutMs = 5000) {
   });
 }
 
+export async function collectMessages(socket, predicate, count, timeoutMs = 5000) {
+  return new Promise((resolve, reject) => {
+    const matched = [];
+    const timeout = setTimeout(() => {
+      cleanup();
+      reject(new Error(`Timed out waiting for ${count} websocket messages (received ${matched.length})`));
+    }, timeoutMs);
+
+    function onMessage(raw) {
+      try {
+        const message = JSON.parse(raw.toString("utf8"));
+        if (!predicate(message)) {
+          return;
+        }
+        matched.push(message);
+        if (matched.length >= count) {
+          cleanup();
+          resolve(matched);
+        }
+      } catch {
+        // Ignore parse errors in tests.
+      }
+    }
+
+    function onClose() {
+      cleanup();
+      reject(new Error(`Socket closed while collecting messages (received ${matched.length}/${count})`));
+    }
+
+    function cleanup() {
+      clearTimeout(timeout);
+      socket.off("message", onMessage);
+      socket.off("close", onClose);
+    }
+
+    socket.on("message", onMessage);
+    socket.on("close", onClose);
+  });
+}
+
 export function delay(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }

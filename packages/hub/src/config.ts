@@ -46,7 +46,7 @@ const HubConfigSchema = z.object({
       heartbeatIntervalMs: z.number().int().positive().default(10000),
       heartbeatTimeoutMs: z.number().int().positive().default(30000),
       inspectorMaxMessages: z.number().int().positive().default(500),
-      rateLimitPerMinute: z.number().int().positive().default(1800)
+      rateLimitPerMinute: z.number().int().nonnegative().default(120000)
     })
     .default({
       maxMessageSizeBytes: 262144,
@@ -56,7 +56,7 @@ const HubConfigSchema = z.object({
       heartbeatIntervalMs: 10000,
       heartbeatTimeoutMs: 30000,
       inspectorMaxMessages: 500,
-      rateLimitPerMinute: 1800
+      rateLimitPerMinute: 120000
     }),
   validation: z
     .object({
@@ -74,13 +74,17 @@ const HubConfigSchema = z.object({
       enabled: z.boolean().default(true),
       sqlitePath: z.string().default(path.resolve(process.cwd(), "data/hub.sqlite")),
       auditEnabled: z.boolean().default(true),
-      auditTtlDays: z.number().int().positive().default(14)
+      auditTtlDays: z.number().int().positive().default(14),
+      stateSnapshotFlushMs: z.number().int().positive().default(250),
+      maxPendingStateSnapshots: z.number().int().positive().default(5000)
     })
     .default({
       enabled: true,
       sqlitePath: path.resolve(process.cwd(), "data/hub.sqlite"),
       auditEnabled: true,
-      auditTtlDays: 14
+      auditTtlDays: 14,
+      stateSnapshotFlushMs: 250,
+      maxPendingStateSnapshots: 5000
     }),
   staticHosting: z
     .object({
@@ -157,6 +161,8 @@ function loadFromEnv(defaults: HubConfig): Record<string, unknown> {
   const sqlitePath = process.env.HUB_SQLITE_PATH;
   const allowlist = process.env.HUB_ALLOWLIST_SUBNETS;
   const corsOrigins = process.env.HUB_CORS_ORIGINS;
+  const stateSnapshotFlushMs = toNumber(process.env.HUB_STATE_SNAPSHOT_FLUSH_MS);
+  const maxPendingStateSnapshots = toNumber(process.env.HUB_MAX_PENDING_STATE_SNAPSHOTS);
 
   const envConfig: Record<string, unknown> = {
     domain,
@@ -180,7 +186,9 @@ function loadFromEnv(defaults: HubConfig): Record<string, unknown> {
       enabled: toBoolean(process.env.HUB_PERSISTENCE_ENABLED, defaults.persistence.enabled),
       sqlitePath,
       auditEnabled: toBoolean(process.env.HUB_AUDIT_ENABLED, defaults.persistence.auditEnabled),
-      auditTtlDays: toNumber(process.env.HUB_AUDIT_TTL_DAYS)
+      auditTtlDays: toNumber(process.env.HUB_AUDIT_TTL_DAYS),
+      stateSnapshotFlushMs,
+      maxPendingStateSnapshots
     },
     limits: {
       maxMessageSizeBytes: toNumber(process.env.HUB_MAX_MESSAGE_SIZE_BYTES),
