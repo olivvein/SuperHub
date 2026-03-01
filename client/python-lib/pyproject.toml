@@ -16,6 +16,13 @@ authors = [
   { name = "SuperHub" }
 ]
 
+[project.scripts]
+superhub-py-music-provider = "superhub_client.examples.music_provider:main"
+superhub-py-music-controller = "superhub_client.examples.music_controller:main"
+superhub-py-iss-provider = "superhub_client.examples.iss_provider:main"
+superhub-py-iss-updater = "superhub_client.examples.iss_updater:main"
+superhub-py-http-demo = "superhub_client.examples.http_api_demo:main"
+
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["superhub_client*"]

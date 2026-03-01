@@ -17,14 +17,17 @@ async def main() -> None:
 asyncio.run(main())
 ```
 
-## ISS examples
+## Bundled examples (installed with the package)
 
-This package now includes ISS examples in `client/python-lib/examples/`:
+The package now includes all examples under `superhub_client.examples`:
 
-- `iss_provider.py`
-- `iss_updater.py`
+- `music_provider`
+- `music_controller`
+- `iss_provider`
+- `iss_updater`
+- `http_api_demo`
 
-Run from repo root:
+Run from repo root (dev mode):
 
 ```bash
 # optional: load env template
@@ -39,9 +42,17 @@ pip install -e client/python-lib
 # optional dependency for updater
 pip install "client/python-lib[examples]"
 
-# terminal 1
-HUB_TOKEN=CHANGE_ME_SUPERHUB_TOKEN python client/python-lib/examples/iss_provider.py
+# or from installed package using CLI entry points
+superhub-py-music-provider
+superhub-py-music-controller
+superhub-py-iss-provider
+superhub-py-http-demo
+superhub-py-iss-updater --hz 10
 
-# terminal 2
-HUB_TOKEN=CHANGE_ME_SUPERHUB_TOKEN python client/python-lib/examples/iss_updater.py --hz 10
+# same examples via python -m
+python -m superhub_client.examples.music_provider
+python -m superhub_client.examples.music_controller
+python -m superhub_client.examples.iss_provider
+python -m superhub_client.examples.http_api_demo
+python -m superhub_client.examples.iss_updater --hz 10
 ```

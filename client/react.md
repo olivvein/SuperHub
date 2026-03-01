@@ -16,6 +16,16 @@ Install from LAN artifact (no npm publish):
 npm install "https://macbook-pro-de-olivier.local/apps/client/dist/npm/superhub-sdk-latest.tgz"
 ```
 
+Copy bundled React examples:
+
+```bash
+npx --no-install superhub-examples ./superhub-examples
+```
+
+Then use files from:
+- `superhub-examples/react/useSuperHub.ts`
+- `superhub-examples/react/IssPanel.tsx`
+
 If your React app is in this monorepo, `@superhub/sdk` is already available.
 
 If app is external and you are on the same machine, you can also install from local path:

@@ -110,3 +110,23 @@ print(http.services())
 - `client/python-lib/examples/iss_updater.py`
 
 `iss_updater.py` supports `--hz` (1..50) and `ISS_SEND_HZ`.
+
+## 7) Bundled example commands (after pip install)
+
+```bash
+superhub-py-music-provider
+superhub-py-music-controller
+superhub-py-http-demo
+superhub-py-iss-provider
+superhub-py-iss-updater --hz 10
+```
+
+Equivalent module form:
+
+```bash
+python -m superhub_client.examples.music_provider
+python -m superhub_client.examples.music_controller
+python -m superhub_client.examples.http_api_demo
+python -m superhub_client.examples.iss_provider
+python -m superhub_client.examples.iss_updater --hz 10
+```

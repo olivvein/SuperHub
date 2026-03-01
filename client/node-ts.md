@@ -16,6 +16,12 @@ Install from LAN artifact (no npm publish):
 npm install "https://macbook-pro-de-olivier.local/apps/client/dist/npm/superhub-sdk-latest.tgz"
 ```
 
+Scaffold bundled examples into your project:
+
+```bash
+npx --no-install superhub-examples ./superhub-examples
+```
+
 Or install directly from a local SuperHub clone:
 
 ```bash

@@ -310,6 +310,7 @@ async function writeIndex(nodeMeta, pythonMeta, certMeta) {
     <style>
       body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; margin: 24px; line-height: 1.5; }
       code { background: #f1f5f9; padding: 2px 6px; border-radius: 4px; }
+      pre { background: #1e293b; color: #f8fafc; padding: 16px; border-radius: 8px; overflow-x: auto; line-height: 1.4; }
       .box { border: 1px solid #d1d5db; border-radius: 10px; padding: 16px; margin-bottom: 16px; }
     </style>
   </head>
@@ -325,17 +326,19 @@ async function writeIndex(nodeMeta, pythonMeta, certMeta) {
 
     <div class="box">
       <h2>Python</h2>
-      <p>Latest wheel: ${
-        pythonMeta.wheel
-          ? `<a href="./python/${pythonMeta.wheel}">${pythonMeta.wheel}</a>`
-          : "<em>not built</em>"
-      }</p>
-      <p>Latest sdist: ${
-        pythonMeta.sdist
-          ? `<a href="./python/${pythonMeta.sdist}">${pythonMeta.sdist}</a>`
-          : "<em>not built</em>"
-      }</p>
+      <p>Latest wheel: ${pythonMeta.wheel
+      ? `<a href="./python/${pythonMeta.wheel}">${pythonMeta.wheel}</a>`
+      : "<em>not built</em>"
+    }</p>
+      <p>Latest sdist: ${pythonMeta.sdist
+      ? `<a href="./python/${pythonMeta.sdist}">${pythonMeta.sdist}</a>`
+      : "<em>not built</em>"
+    }</p>
       <pre>pip install --extra-index-url "https://${host}/apps/client/dist/python/simple/" superhub-client</pre>
+      <pre>HUB_HTTP_URL="https://${host}" \\
+HUB_TOKEN="CHANGE_ME_SUPERHUB_TOKEN" \\
+HUB_TLS_CA_FILE="$HOME/.superhub-caddy-root.crt" \\
+python -m superhub_client.examples.iss_updater --hz 10</pre>
     </div>
 
     ${certSection}

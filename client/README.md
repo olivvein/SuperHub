@@ -65,3 +65,25 @@ curl -k "https://macbook-pro-de-olivier.local/apps/client/dist/certs/caddy-local
 npm_config_cafile="$HOME/.superhub-caddy-root.crt" npm install "https://macbook-pro-de-olivier.local/apps/client/dist/npm/superhub-sdk-latest.tgz"
 PIP_CERT="$HOME/.superhub-caddy-root.crt" pip install --extra-index-url "https://macbook-pro-de-olivier.local/apps/client/dist/python/simple/" superhub-client
 ```
+
+## Examples included in libs
+
+- Node/React (`@superhub/sdk`):
+  - bundled at `@superhub/sdk/examples/`
+  - scaffold into your project:
+
+```bash
+npx --no-install superhub-examples ./superhub-examples
+```
+
+- Python (`superhub-client`):
+  - bundled as `superhub_client.examples.*`
+  - runnable commands after install:
+
+```bash
+superhub-py-music-provider
+superhub-py-music-controller
+superhub-py-http-demo
+superhub-py-iss-provider
+superhub-py-iss-updater --hz 10
+```
