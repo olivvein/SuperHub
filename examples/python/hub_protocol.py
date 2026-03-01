@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import ssl
 import time
 import urllib.parse
 import uuid
@@ -19,7 +20,7 @@ def new_id() -> str:
 
 
 def default_http_url() -> str:
-    return os.getenv("HUB_HTTP_URL", "http://127.0.0.1:7777").rstrip("/")
+    return os.getenv("HUB_HTTP_URL", "https://macbook-pro-de-olivier.local").rstrip("/")
 
 
 def default_ws_url(http_url: str) -> str:
@@ -27,6 +28,24 @@ def default_ws_url(http_url: str) -> str:
     if explicit:
         return explicit.rstrip("/")
     return http_url.replace("https://", "wss://").replace("http://", "ws://").rstrip("/") + "/ws"
+
+
+def tls_context_for_url(url: str) -> ssl.SSLContext | None:
+    normalized = url.lower()
+    if not (normalized.startswith("https://") or normalized.startswith("wss://")):
+        return None
+
+    insecure = os.getenv("HUB_TLS_INSECURE", "").strip().lower() in {"1", "true", "yes", "on"}
+    if insecure:
+        return ssl._create_unverified_context()
+
+    default_caddy_ca = os.path.expanduser("~/Library/Application Support/Caddy/pki/authorities/local/root.crt")
+    auto_ca_file = default_caddy_ca if os.path.exists(default_caddy_ca) else None
+    ca_file = os.getenv("HUB_TLS_CA_FILE") or os.getenv("SSL_CERT_FILE") or auto_ca_file
+    if ca_file:
+        return ssl.create_default_context(cafile=ca_file)
+
+    return ssl.create_default_context()
 
 
 def ws_url_with_token(ws_url: str, token: str | None) -> str:

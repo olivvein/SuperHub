@@ -1,5 +1,5 @@
 {
-  "domain": "hub.local",
+  "domain": "macbook-pro-de-olivier.local",
   "listen": {
     "host": "127.0.0.1",
     "port": 7777
@@ -13,7 +13,7 @@
   },
   "cors": {
     "origins": [
-      "https://hub.local"
+      "https://macbook-pro-de-olivier.local"
     ],
     "allowHeaders": [
       "Content-Type",

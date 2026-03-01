@@ -13,6 +13,7 @@ from hub_protocol import (
     make_presence_envelope,
     now_ms,
     send_json,
+    tls_context_for_url,
     ws_url_with_token,
 )
 
@@ -29,7 +30,13 @@ async def run() -> None:
     ws_url = ws_url_with_token(default_ws_url(http_url), token)
     source = {"clientId": client_id, "serviceName": "music"}
 
-    async with websockets.connect(ws_url, ping_interval=20, ping_timeout=20, max_size=1024 * 1024) as ws:
+    async with websockets.connect(
+        ws_url,
+        ping_interval=20,
+        ping_timeout=20,
+        max_size=1024 * 1024,
+        ssl=tls_context_for_url(ws_url),
+    ) as ws:
         print(f"music-provider connected ({client_id}) -> {ws_url}")
 
         await send_json(

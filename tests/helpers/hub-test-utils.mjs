@@ -7,7 +7,7 @@ const ROOT = new URL("../../", import.meta.url).pathname;
 
 export async function startHubTestServer(overrides = {}) {
   const config = {
-    domain: "hub.local",
+    domain: "macbook-pro-de-olivier.local",
     listen: {
       host: "127.0.0.1",
       port: 0

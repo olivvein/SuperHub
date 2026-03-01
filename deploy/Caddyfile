@@ -1,32 +1,31 @@
-{
-  auto_https off
-}
+https://macbook-pro-de-olivier.local {
+	tls {
+		issuer internal
+		key_type rsa2048
+	}
 
-hub.local {
-  tls internal
+	encode zstd gzip
 
-  encode zstd gzip
+	header {
+		X-Frame-Options "SAMEORIGIN"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "strict-origin-when-cross-origin"
+	}
 
-  header {
-    X-Frame-Options "SAMEORIGIN"
-    X-Content-Type-Options "nosniff"
-    Referrer-Policy "strict-origin-when-cross-origin"
-  }
+	@ws path /ws
+	reverse_proxy @ws 127.0.0.1:7777
 
-  @ws path /ws
-  reverse_proxy @ws 127.0.0.1:7777
+	@api path /api/*
+	reverse_proxy @api 127.0.0.1:7777
 
-  @api path /api/*
-  reverse_proxy @api 127.0.0.1:7777
+	@console path /console/*
+	reverse_proxy @console 127.0.0.1:7777
 
-  @console path /console/*
-  reverse_proxy @console 127.0.0.1:7777
+	@pair path /console/pair
+	reverse_proxy @pair 127.0.0.1:7777
 
-  @pair path /console/pair
-  reverse_proxy @pair 127.0.0.1:7777
+	@apps path /apps/*
+	reverse_proxy @apps 127.0.0.1:7777
 
-  @apps path /apps/*
-  reverse_proxy @apps 127.0.0.1:7777
-
-  reverse_proxy 127.0.0.1:7777
+	reverse_proxy 127.0.0.1:7777
 }

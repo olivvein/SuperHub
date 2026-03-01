@@ -14,6 +14,10 @@ export interface HubClientOptions {
   httpUrl: string;
   wsUrl?: string;
   token?: string;
+  tls?: {
+    caFile?: string;
+    rejectUnauthorized?: boolean;
+  };
   clientId: string;
   serviceName?: string;
   version?: string;
@@ -258,8 +262,9 @@ export class HubClient {
       url.searchParams.set("token", this.options.token);
     }
 
+    const socket = await this.createSocket(url.toString());
+
     await new Promise<void>((resolve, reject) => {
-      const socket = new WebSocket(url.toString());
       this.socket = socket;
       const connectTimeout = setTimeout(() => {
         if (socket.readyState !== WebSocket.OPEN) {
@@ -302,6 +307,31 @@ export class HubClient {
         }
       };
     });
+  }
+
+  private async createSocket(url: string): Promise<WebSocket> {
+    const isNodeRuntime =
+      typeof process !== "undefined" && typeof process.versions === "object" && Boolean(process.versions.node);
+    const tls = this.options.tls;
+
+    if (!isNodeRuntime || !tls || (!tls.caFile && tls.rejectUnauthorized == null)) {
+      return new WebSocket(url);
+    }
+
+    const wsOptions: Record<string, unknown> = {};
+    if (tls.rejectUnauthorized != null) {
+      wsOptions.rejectUnauthorized = tls.rejectUnauthorized;
+    }
+    if (tls.caFile) {
+      const fs = await import("node:fs");
+      wsOptions.ca = fs.readFileSync(tls.caFile, "utf8");
+    }
+
+    return new (WebSocket as unknown as { new (address: string, protocols: string[], options: Record<string, unknown>): WebSocket })(
+      url,
+      [],
+      wsOptions
+    );
   }
 
   private scheduleReconnect(): void {

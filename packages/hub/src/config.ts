@@ -9,7 +9,7 @@ dotenv.config();
 dotenv.config({ path: path.resolve(process.cwd(), "../../.env") });
 
 const HubConfigSchema = z.object({
-  domain: z.string().default("hub.local"),
+  domain: z.string().default("macbook-pro-de-olivier.local"),
   listen: z
     .object({
       host: z.string().default("127.0.0.1"),
@@ -30,11 +30,11 @@ const HubConfigSchema = z.object({
     }),
   cors: z
     .object({
-      origins: z.array(z.string()).default(["https://hub.local"]),
+      origins: z.array(z.string()).default(["https://macbook-pro-de-olivier.local"]),
       allowHeaders: z.array(z.string()).default(["Content-Type", "X-Hub-Token"])
     })
     .default({
-      origins: ["https://hub.local"],
+      origins: ["https://macbook-pro-de-olivier.local"],
       allowHeaders: ["Content-Type", "X-Hub-Token"]
     }),
   limits: z

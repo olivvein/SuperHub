@@ -6,7 +6,7 @@ import urllib.error
 import urllib.request
 from typing import Any
 
-from hub_protocol import default_http_url, now_ms
+from hub_protocol import default_http_url, now_ms, tls_context_for_url
 
 
 def request_json(
@@ -29,8 +29,10 @@ def request_json(
     if token:
         request.add_header("X-Hub-Token", token)
 
+    ssl_context = tls_context_for_url(base_url)
+
     try:
-        with urllib.request.urlopen(request, timeout=10) as response:
+        with urllib.request.urlopen(request, timeout=10, context=ssl_context) as response:
             raw = response.read().decode("utf-8")
             return json.loads(raw)
     except urllib.error.HTTPError as error:

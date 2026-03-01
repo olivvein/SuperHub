@@ -39,14 +39,18 @@ Terminal 1 (provider):
 
 ```bash
 source .venv/bin/activate
-HUB_TOKEN=CHANGE_ME_SUPERHUB_TOKEN python examples/python/music_provider.py
+HUB_TOKEN=CHANGE_ME_SUPERHUB_TOKEN \
+HUB_TLS_CA_FILE="$HOME/Library/Application Support/Caddy/pki/authorities/local/root.crt" \
+python examples/python/music_provider.py
 ```
 
 Terminal 2 (controller):
 
 ```bash
 source .venv/bin/activate
-HUB_TOKEN=CHANGE_ME_SUPERHUB_TOKEN python examples/python/music_controller.py
+HUB_TOKEN=CHANGE_ME_SUPERHUB_TOKEN \
+HUB_TLS_CA_FILE="$HOME/Library/Application Support/Caddy/pki/authorities/local/root.crt" \
+python examples/python/music_controller.py
 ```
 
 You should see:
@@ -66,11 +70,16 @@ HUB_TOKEN=CHANGE_ME_SUPERHUB_TOKEN python examples/python/http_api_demo.py
 
 ## Environment variables
 
-- `HUB_HTTP_URL` (default: `http://127.0.0.1:7777`)
+- `HUB_HTTP_URL` (default: `https://macbook-pro-de-olivier.local`)
 - `HUB_WS_URL` (optional; auto-derived from `HUB_HTTP_URL`)
 - `HUB_TOKEN` (optional if hub has no token)
 - `CLIENT_ID` (optional; auto-generated if missing)
 - `ISS_SEND_HZ` (for `iss_updater.py`, default `1`, clamped to `1..50`)
+- `HUB_TLS_CA_FILE` (recommended for local TLS CA, e.g. Caddy `root.crt`)
+- `HUB_TLS_INSECURE=1` (dev-only: disable TLS verification)
+
+Python examples also auto-detect Caddy CA at:
+- `~/Library/Application Support/Caddy/pki/authorities/local/root.crt`
 
 ## ISS updater rate
 
@@ -88,10 +97,14 @@ HUB_TOKEN=CHANGE_ME_SUPERHUB_TOKEN python examples/python/iss_updater.py --hz 50
 
 ```bash
 # terminal 1
-HUB_TOKEN=CHANGE_ME_SUPERHUB_TOKEN python examples/python/iss_provider.py
+HUB_TOKEN=CHANGE_ME_SUPERHUB_TOKEN \
+HUB_TLS_CA_FILE="$HOME/Library/Application Support/Caddy/pki/authorities/local/root.crt" \
+python examples/python/iss_provider.py
 
 # terminal 2
-HUB_TOKEN=CHANGE_ME_SUPERHUB_TOKEN python examples/python/iss_updater.py --hz 10
+HUB_TOKEN=CHANGE_ME_SUPERHUB_TOKEN \
+HUB_TLS_CA_FILE="$HOME/Library/Application Support/Caddy/pki/authorities/local/root.crt" \
+python examples/python/iss_updater.py --hz 10
 ```
 
 Published by updater:
@@ -102,5 +115,6 @@ Published by updater:
 
 - WS auth uses `?token=` query param (compatible with current hub auth).
 - For TLS/local domain usage, set:
-  - `HUB_HTTP_URL=https://hub.local`
+  - `HUB_HTTP_URL=https://macbook-pro-de-olivier.local`
+  - `HUB_TLS_CA_FILE=$HOME/Library/Application Support/Caddy/pki/authorities/local/root.crt`
   - trust CA first (`docs/OPS_RUNBOOK.md`).

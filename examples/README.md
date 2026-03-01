@@ -38,13 +38,17 @@ npm run dev
 Terminal 2 (Provider):
 
 ```bash
-HUB_TOKEN=CHANGE_ME_SUPERHUB_TOKEN npx tsx examples/music-provider.ts
+HUB_TOKEN=CHANGE_ME_SUPERHUB_TOKEN \
+HUB_TLS_CA_FILE="$HOME/Library/Application Support/Caddy/pki/authorities/local/root.crt" \
+npx tsx examples/music-provider.ts
 ```
 
 Terminal 3 (Controller):
 
 ```bash
-HUB_TOKEN=CHANGE_ME_SUPERHUB_TOKEN npx tsx examples/music-controller.ts
+HUB_TOKEN=CHANGE_ME_SUPERHUB_TOKEN \
+HUB_TLS_CA_FILE="$HOME/Library/Application Support/Caddy/pki/authorities/local/root.crt" \
+npx tsx examples/music-controller.ts
 ```
 
 ## Ce qui doit se passer
@@ -59,11 +63,18 @@ HUB_TOKEN=CHANGE_ME_SUPERHUB_TOKEN npx tsx examples/music-controller.ts
 
 ## URL utilisee par les exemples
 
-Les exemples sont configures pour parler au Hub local HTTP:
+Les exemples sont configures pour parler au Hub local via Caddy/TLS:
 
-- `http://127.0.0.1:7777`
+- `https://macbook-pro-de-olivier.local`
 
-Si tu passes en TLS via Caddy (`https://hub.local`), mets a jour `httpUrl` dans les exemples.
+Tu peux override avec `HUB_HTTP_URL` si besoin (par exemple `http://127.0.0.1:7777` sans Caddy).
+
+Variables TLS utiles (Node examples):
+- `HUB_TLS_CA_FILE`: chemin du `root.crt` Caddy local (recommande)
+- `HUB_TLS_INSECURE=1`: desactive la verification TLS (dev only)
+
+Note: les exemples Node detectent automatiquement le CA Caddy a
+`~/Library/Application Support/Caddy/pki/authorities/local/root.crt` si present.
 
 ## Troubleshooting
 
@@ -73,9 +84,12 @@ Si tu passes en TLS via Caddy (`https://hub.local`), mets a jour `httpUrl` dans 
   - verifie `HUB_TOKEN`
 - Pas de message recu:
   - verifie que le Hub tourne
-  - verifie que provider et controller utilisent la meme URL et le meme token
+  - verifie que provider et controller utilisent la meme URL (`HUB_HTTP_URL`) et le meme token
 - Certificat/TLS navigateur iOS/macOS:
   - voir setup Caddy + trust CA dans la doc racine
+- `unable to get local issuer certificate` (Node):
+  - set `HUB_TLS_CA_FILE="$HOME/Library/Application Support/Caddy/pki/authorities/local/root.crt"`
+  - sinon fallback dev: `HUB_TLS_INSECURE=1`
 
 ## Tests associes
 

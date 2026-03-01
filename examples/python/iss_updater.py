@@ -22,6 +22,7 @@ from hub_protocol import (
     make_presence_envelope,
     now_ms,
     send_json,
+    tls_context_for_url,
     ws_url_with_token,
 )
 
@@ -164,7 +165,13 @@ async def run(send_hz: float) -> None:
     tle: Optional[IssTle] = None
     last_tle_fetch = 0.0
 
-    async with websockets.connect(ws_url, ping_interval=20, ping_timeout=20, max_size=1024 * 1024) as ws:
+    async with websockets.connect(
+        ws_url,
+        ping_interval=20,
+        ping_timeout=20,
+        max_size=1024 * 1024,
+        ssl=tls_context_for_url(ws_url),
+    ) as ws:
         print(f"iss-updater connected ({client_id}) -> {ws_url}")
         print(f"ISS update rate: {send_hz:.3f} Hz ({send_interval_s * 1000.0:.1f} ms)")
 
