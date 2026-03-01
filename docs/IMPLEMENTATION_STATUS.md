@@ -60,6 +60,7 @@ Ce document resume ce qui a ete implemente dans le repo, les problemes rencontre
 - Console web:
   - Dashboard, services, clients, inspector, state viewer, config
   - page pairing (`/console/pair`) avec QR code (payload URL+token)
+  - dashboard realtime via event WS `hub.dashboard` + fallback HTTP periodique
 
 ### 1.4 Package `@superhub/sdk`
 
@@ -79,6 +80,7 @@ Ce document resume ce qui a ete implemente dans le repo, les problemes rencontre
 - Exemples fournis:
   - `examples/music-provider.ts`
   - `examples/music-controller.ts`
+  - `examples/python/*` (music provider/controller, HTTP demo, ISS provider/updater)
 - Documentation de base:
   - `README.md`
 
@@ -93,6 +95,12 @@ Ce document resume ce qui a ete implemente dans le repo, les problemes rencontre
   - strategie unique de chargement JS inline dans `index.html`
   - fallback UX explicite en cas de token invalide / allowlist refusee
   - headers `Cache-Control: no-store` pour limiter les artefacts cache
+- Dashboard console non realtime:
+  - flux WS dedie `hub.dashboard` ajoute (snapshot health/metrics/services/clients)
+  - fallback HTTP conserve mais ralenti (poll periodique)
+- Echec WS navigateur sur `127.0.0.1` sans logs WS hub:
+  - cause: `Origin` local non autorise dans policy CORS
+  - correction: acceptation explicite des origines loopback (`localhost`, `127.0.0.1`, `::1`)
 
 ## 3. Validation effectuee
 
@@ -102,7 +110,9 @@ Ce document resume ce qui a ete implemente dans le repo, les problemes rencontre
   Note: les tests integration WS ouvrent un port local et peuvent echouer en environnement sandbox restreint.
 - Tests manuels confirmes:
   - exemples `music-provider` / `music-controller` fonctionnels
+  - exemples Python `music_*` et `iss_*` fonctionnels
   - console accessible et chargee en local
+  - dashboard console mis a jour en push WS (si WS disponible)
 
 ## 4. Etat par rapport a la spec initiale
 
@@ -129,6 +139,8 @@ Notation:
   - QR code reel + fallback si dependance indisponible
 - Metrics basiques: `DONE`
 - Persistance SQLite snapshots: `DONE`
+- Console dashboard realtime: `DONE`
+  - push WS `hub.dashboard` + fallback HTTP
 
 ### 4.3 V1.1
 
@@ -165,13 +177,21 @@ Notation:
 - Runbook `docs/OPS_RUNBOOK.md`:
   - trust CA macOS+iOS pas-a-pas
   - supervision/restart launchd + option PM2
+  - troubleshooting WS console local (origin/token/allowlist)
+
+7. Exemples Python: `DONE`
+- `examples/python` ajoute:
+  - music provider/controller
+  - HTTP API demo
+  - ISS updater/provider
+- `iss_updater.py` supporte un debit configurable `1..50 Hz` (`ISS_SEND_HZ` ou `--hz`)
 
 ### P2 - evolution
 
-7. Export/import config
-8. UX de correlation/traces
-9. Predicate de subscription (V2)
-10. Rotation de token / pairing avance (V2)
+8. Export/import config
+9. UX de correlation/traces
+10. Predicate de subscription (V2)
+11. Rotation de token / pairing avance (V2)
 
 ## 6. Check-list de mise en prod LAN
 

@@ -1,10 +1,12 @@
 # Examples - Dev Guide
 
-Ce dossier contient 2 exemples Node.js/TS pour valider le flux SuperHub en local:
+Ce dossier contient des exemples Node.js/TS et Python pour valider le flux SuperHub en local:
 
 - `music-provider.ts`: service provider `music`
 - `music-controller.ts`: client controller qui appelle une RPC `music.play`
 - `python/`: memes flux en Python (WS + HTTP), voir `examples/python/README.md`
+  - `iss_provider.py`: provider ISS minimal
+  - `iss_updater.py`: updater ISS (frequence reglable 1..50 Hz)
 
 ## Prerequis
 

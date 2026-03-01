@@ -124,6 +124,9 @@ interface PairPayload {
   token?: string;
 }
 
+const DASHBOARD_STREAM_EVENT_NAME = "hub.dashboard";
+const DASHBOARD_STREAM_INTERVAL_MS = 500;
+
 export interface HubRuntime {
   app: FastifyInstance;
   close: () => Promise<void>;
@@ -183,7 +186,7 @@ export async function createHubRuntime(config: HubConfig): Promise<HubRuntime> {
         callback(null, true);
         return;
       }
-      if (config.cors.origins.includes(origin)) {
+      if (isCorsOriginAllowed(origin, config.cors.origins)) {
         callback(null, true);
         return;
       }
@@ -371,18 +374,7 @@ export async function createHubRuntime(config: HubConfig): Promise<HubRuntime> {
       preHandler: [authorizeHttp]
     },
     async () => {
-      const latencies = [...metrics.rpcLatenciesMs].sort((a, b) => a - b);
-      const mean = latencies.length ? latencies.reduce((sum, value) => sum + value, 0) / latencies.length : 0;
-      const p95 = percentile(latencies, 95);
-
-      return {
-        messagesIn: metrics.messagesIn,
-        messagesOut: metrics.messagesOut,
-        droppedMessages: metrics.droppedMessages,
-        reconnectCount: metrics.reconnectCount,
-        rpcLatencyAvgMs: Number(mean.toFixed(2)),
-        rpcLatencyP95Ms: Number(p95.toFixed(2))
-      };
+      return metricsSnapshot();
     }
   );
 
@@ -617,6 +609,10 @@ export async function createHubRuntime(config: HubConfig): Promise<HubRuntime> {
     (socket: WebSocket, request: FastifyRequest) => {
       const tokenResult = authorizeTokenForRequest(request);
       if (!tokenResult.ok) {
+        logger.warn("ws.unauthorized", {
+          ip: request.ip,
+          reason: tokenResult.reason
+        });
         socket.send(JSON.stringify(errorEnvelope("AUTH_REQUIRED", tokenResult.reason, null, "*")));
         socket.close(1008, tokenResult.reason);
         return;
@@ -722,10 +718,15 @@ export async function createHubRuntime(config: HubConfig): Promise<HubRuntime> {
     persistence.vacuumAudit(nowEpochMs());
   }, 60 * 60 * 1000);
 
+  const dashboardStreamTimer = setInterval(() => {
+    pushDashboardSnapshot();
+  }, DASHBOARD_STREAM_INTERVAL_MS);
+
   app.addHook("onClose", async () => {
     clearInterval(heartbeatTimer);
     clearInterval(queueFlushTimer);
     clearInterval(retentionTimer);
+    clearInterval(dashboardStreamTimer);
 
     for (const pending of pendingRpc.values()) {
       clearTimeout(pending.timeout);
@@ -740,6 +741,89 @@ export async function createHubRuntime(config: HubConfig): Promise<HubRuntime> {
 
     persistence.close();
   });
+
+  function metricsSnapshot(): {
+    messagesIn: Metrics["messagesIn"];
+    messagesOut: Metrics["messagesOut"];
+    droppedMessages: number;
+    reconnectCount: number;
+    rpcLatencyAvgMs: number;
+    rpcLatencyP95Ms: number;
+  } {
+    const latencies = [...metrics.rpcLatenciesMs].sort((a, b) => a - b);
+    const mean = latencies.length ? latencies.reduce((sum, value) => sum + value, 0) / latencies.length : 0;
+    const p95 = percentile(latencies, 95);
+
+    return {
+      messagesIn: metrics.messagesIn,
+      messagesOut: metrics.messagesOut,
+      droppedMessages: metrics.droppedMessages,
+      reconnectCount: metrics.reconnectCount,
+      rpcLatencyAvgMs: Number(mean.toFixed(2)),
+      rpcLatencyP95Ms: Number(p95.toFixed(2))
+    };
+  }
+
+  function hasSubscribersFor(messageName: string): boolean {
+    for (const session of sessions.values()) {
+      if (matchesSubscription(session, messageName)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  function dashboardSnapshotPayload(): Record<string, unknown> {
+    return {
+      ts: nowEpochMs(),
+      health: {
+        ok: true,
+        ts: nowEpochMs(),
+        uptimeSec: Math.round(process.uptime()),
+        sessions: sessions.size,
+        services: providerSessionIds.size
+      },
+      metrics: metricsSnapshot(),
+      services: Array.from(presenceByServiceInstance.values())
+        .sort((a, b) => a.serviceName.localeCompare(b.serviceName) || a.instanceId.localeCompare(b.instanceId))
+        .map((record) => ({
+          ...record,
+          health: record.online ? "online" : "offline"
+        })),
+      clients: Array.from(sessions.values()).map((session) => ({
+        sessionId: session.sessionId,
+        clientId: session.clientId,
+        serviceName: session.serviceName,
+        instanceId: session.instanceId,
+        ip: session.ip,
+        connectedAt: session.connectedAt,
+        lastSeen: session.lastSeen,
+        provides: session.provides,
+        consumes: session.consumes,
+        tags: session.tags
+      }))
+    };
+  }
+
+  function pushDashboardSnapshot(): void {
+    if (!hasSubscribersFor(DASHBOARD_STREAM_EVENT_NAME)) {
+      return;
+    }
+
+    const envelope = createEnvelope({
+      type: "event",
+      name: DASHBOARD_STREAM_EVENT_NAME,
+      source: {
+        clientId: "hub",
+        serviceName: "hub"
+      },
+      target: "*",
+      schemaVersion: 1,
+      payload: dashboardSnapshotPayload()
+    });
+
+    routePublishLike(null, envelope);
+  }
 
   function authorizeHttp(request: FastifyRequest, reply: FastifyReply, done: (error?: Error) => void): void {
     if (!isIpAllowlisted(request.ip, config.security.allowlistSubnets)) {
@@ -1373,6 +1457,7 @@ export async function createHubRuntime(config: HubConfig): Promise<HubRuntime> {
       return;
     }
 
+    const shouldTrack = shouldTrackInternalEnvelope(envelope);
     const raw = JSON.stringify(envelope);
     const bytes = Buffer.byteLength(raw, "utf8");
     if (bytes > config.limits.maxMessageSizeBytes) {
@@ -1384,7 +1469,9 @@ export async function createHubRuntime(config: HubConfig): Promise<HubRuntime> {
         max: config.limits.maxMessageSizeBytes,
         name: envelope.name
       });
-      pushInspector("drop", session.sessionId, envelope, "message too large outbound");
+      if (shouldTrack) {
+        pushInspector("drop", session.sessionId, envelope, "message too large outbound");
+      }
       return;
     }
 
@@ -1393,8 +1480,10 @@ export async function createHubRuntime(config: HubConfig): Promise<HubRuntime> {
     if (!shouldQueue) {
       try {
         session.socket.send(raw);
-        metrics.messagesOut[envelope.type] += 1;
-        pushInspector("out", session.sessionId, envelope);
+        if (shouldTrack) {
+          metrics.messagesOut[envelope.type] += 1;
+          pushInspector("out", session.sessionId, envelope);
+        }
         return;
       } catch {
         // Fall through to queue.
@@ -1422,7 +1511,9 @@ export async function createHubRuntime(config: HubConfig): Promise<HubRuntime> {
 
     for (const dropped of decision.dropped) {
       metrics.droppedMessages += 1;
-      pushInspector("drop", session.sessionId, dropped.envelope, "buffer backpressure");
+      if (shouldTrackInternalEnvelope(dropped.envelope)) {
+        pushInspector("drop", session.sessionId, dropped.envelope, "buffer backpressure");
+      }
     }
 
     session.queueBytes = decision.queueBytes;
@@ -1460,8 +1551,10 @@ export async function createHubRuntime(config: HubConfig): Promise<HubRuntime> {
       session.queueBytes -= item.bytes;
       try {
         session.socket.send(item.raw);
-        metrics.messagesOut[item.envelope.type] += 1;
-        pushInspector("out", session.sessionId, item.envelope);
+        if (shouldTrackInternalEnvelope(item.envelope)) {
+          metrics.messagesOut[item.envelope.type] += 1;
+          pushInspector("out", session.sessionId, item.envelope);
+        }
       } catch {
         logger.warn("ws.queue_send_failure", {
           sessionId: session.sessionId,
@@ -1469,7 +1562,9 @@ export async function createHubRuntime(config: HubConfig): Promise<HubRuntime> {
           name: item.envelope.name
         });
         metrics.droppedMessages += 1;
-        pushInspector("drop", session.sessionId, item.envelope, "socket send failure");
+        if (shouldTrackInternalEnvelope(item.envelope)) {
+          pushInspector("drop", session.sessionId, item.envelope, "socket send failure");
+        }
       }
     }
   }
@@ -1715,6 +1810,10 @@ export async function createHubRuntime(config: HubConfig): Promise<HubRuntime> {
     return false;
   }
 
+  function shouldTrackInternalEnvelope(envelope: HubEnvelope): boolean {
+    return envelope.name !== DASHBOARD_STREAM_EVENT_NAME;
+  }
+
   function pushRpcLatency(latencyMs: number): void {
     metrics.rpcLatenciesMs.push(latencyMs);
     if (metrics.rpcLatenciesMs.length > 5000) {
@@ -1813,6 +1912,26 @@ function serveStaticFromDir(
 function isPathWithinRoot(rootDir: string, filePath: string): boolean {
   const normalizedRoot = rootDir.endsWith(path.sep) ? rootDir : `${rootDir}${path.sep}`;
   return filePath === rootDir || filePath.startsWith(normalizedRoot);
+}
+
+function isCorsOriginAllowed(origin: string, configuredOrigins: string[]): boolean {
+  if (configuredOrigins.includes(origin)) {
+    return true;
+  }
+
+  let parsed: URL;
+  try {
+    parsed = new URL(origin);
+  } catch {
+    return false;
+  }
+
+  const hostname = parsed.hostname.toLowerCase();
+  if (hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1") {
+    return true;
+  }
+
+  return false;
 }
 
 function contentTypeForFile(filePath: string): string {

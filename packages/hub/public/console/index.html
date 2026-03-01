@@ -114,8 +114,9 @@
 
       const HUB_PROTOCOL_VERSION = 1;
       const WS_RECONNECT_MS = 1500;
-      const DASHBOARD_REFRESH_MS = 1000;
+      const POLL_REFRESH_MS = 5000;
       const STATE_WATCH_ID = "console-state-watch";
+      const DASHBOARD_SUBSCRIPTION_ID = "console-dashboard-sub";
       const CONSOLE_CLIENT_ID_KEY = "superhub.console.clientId";
 
       let ws = null;
@@ -142,6 +143,7 @@
       saveTokenButton.addEventListener("click", () => {
         localStorage.setItem("superhub.token", tokenInput.value.trim());
         resetWsConnection();
+        connectWs();
         void refreshAll();
       });
 
@@ -241,6 +243,24 @@
         }
       }
 
+      function applyDashboardSnapshot(payload) {
+        const health = payload && typeof payload.health === "object" ? payload.health : null;
+        const metrics = payload && typeof payload.metrics === "object" ? payload.metrics : null;
+        const services = Array.isArray(payload?.services) ? payload.services : null;
+        const clients = Array.isArray(payload?.clients) ? payload.clients : null;
+
+        if (health && metrics) {
+          renderHealth(health, metrics);
+          metricsOutput.textContent = JSON.stringify(metrics, null, 2);
+        }
+        if (services) {
+          renderServices({ services });
+        }
+        if (clients) {
+          renderClients({ clients });
+        }
+      }
+
       function renderInspector() {
         const query = inspectorFilter.value.trim().toLowerCase();
 
@@ -311,7 +331,6 @@
           configOutput.textContent = JSON.stringify(config, null, 2);
 
           await refreshState();
-          connectWs();
         } catch (error) {
           const statusCode = Number(error.statusCode || 0);
           if (statusCode === 401) {
@@ -363,17 +382,35 @@
         ws = new WebSocket(url.toString());
 
         ws.onopen = () => {
+          clearStatus();
           sendPresence();
+          subscribeDashboardStream();
           updateWsWatch();
+        };
+
+        ws.onerror = () => {
+          setStatus("Flux realtime WS indisponible. Fallback HTTP actif.", "warn");
         };
 
         ws.onmessage = (event) => {
           handleWsMessage(event.data);
         };
 
-        ws.onclose = () => {
+        ws.onclose = (event) => {
           ws = null;
           wsWatchPrefix = null;
+
+          if (event.code === 1008) {
+            if ((event.reason || "").toLowerCase().includes("missing") || (event.reason || "").toLowerCase().includes("token")) {
+              setStatus("WebSocket refuse: token invalide ou manquant.", "error");
+              return;
+            }
+            if ((event.reason || "").toLowerCase().includes("forbidden")) {
+              setStatus("WebSocket refuse: IP non allowlist.", "error");
+              return;
+            }
+          }
+
           if (wsReconnectTimer) {
             clearTimeout(wsReconnectTimer);
           }
@@ -411,9 +448,18 @@
             serviceName: "console",
             version: "0.1.0",
             provides: [],
-            consumes: ["state.*"],
+            consumes: ["state.*", "hub.dashboard"],
             tags: ["console"]
           }
+        });
+      }
+
+      function subscribeDashboardStream() {
+        sendWsEnvelope({
+          type: "cmd",
+          name: "subscribe",
+          target: { serviceName: "hub" },
+          payload: { subscriptionId: DASHBOARD_SUBSCRIPTION_ID, names: ["hub.dashboard"] }
         });
       }
 
@@ -463,6 +509,11 @@
           }
 
           const message = JSON.parse(raw);
+          if (message.type === "event" && message.name === "hub.dashboard") {
+            applyDashboardSnapshot(message.payload || {});
+            return;
+          }
+
           if (message.type === "state_patch") {
             const payload = message.payload || {};
             const path = typeof payload.path === "string" ? payload.path : null;
@@ -547,10 +598,11 @@
           .replaceAll("'", "&#039;");
       }
 
+      connectWs();
       void refreshAll();
       setInterval(() => {
         void refreshAll();
-      }, DASHBOARD_REFRESH_MS);
+      }, POLL_REFRESH_MS);
     </script>
   </body>
 </html>

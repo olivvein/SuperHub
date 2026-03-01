@@ -6,6 +6,8 @@ Python examples for SuperHub protocol usage over WS and HTTP.
 
 - `music_provider.py`: WS provider for service `music` (handles `music.play` RPC).
 - `music_controller.py`: WS client that subscribes, watches state, and sends `music.play` RPC.
+- `iss_provider.py`: WS provider `iss` (stub RPC responder).
+- `iss_updater.py`: realtime ISS updater (state + event push).
 - `http_api_demo.py`: HTTP API demo (`/api/health`, `/api/publish`, `/api/rpc`).
 - `hub_protocol.py`: shared helpers for envelope creation and URLs.
 
@@ -81,6 +83,20 @@ ISS_SEND_HZ=20 HUB_TOKEN=CHANGE_ME_SUPERHUB_TOKEN python examples/python/iss_upd
 # via CLI (priority over env)
 HUB_TOKEN=CHANGE_ME_SUPERHUB_TOKEN python examples/python/iss_updater.py --hz 50
 ```
+
+## ISS quick start
+
+```bash
+# terminal 1
+HUB_TOKEN=CHANGE_ME_SUPERHUB_TOKEN python examples/python/iss_provider.py
+
+# terminal 2
+HUB_TOKEN=CHANGE_ME_SUPERHUB_TOKEN python examples/python/iss_updater.py --hz 10
+```
+
+Published by updater:
+- state path: `state/iss/position`
+- event name: `iss.position`
 
 ## Notes
 

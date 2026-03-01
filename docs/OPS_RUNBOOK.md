@@ -173,3 +173,24 @@ Puis valider en navigateur:
 - `https://hub.local/console/`
 - `https://hub.local/console/pair`
 
+## 8. Troubleshooting console realtime WS
+
+Symptome:
+- browser log `WebSocket connection ... failed`
+- console fonctionne en HTTP mais pas en push temps reel
+
+Checks:
+1. Token valide:
+   - `X-Hub-Token` pour HTTP
+   - `?token=...` pour WS
+2. Allowlist IP:
+   - verifier `security.allowlistSubnets`
+3. Origin local:
+   - en dev local (`http://127.0.0.1:7777/console/`), le hub accepte maintenant `localhost`, `127.0.0.1`, `::1`
+4. Endpoint direct:
+   - `GET /api/health` doit repondre
+   - `ws://127.0.0.1:7777/ws?token=...` doit s'ouvrir depuis navigateur
+
+Notes:
+- le dashboard console utilise `hub.dashboard` en push WS.
+- fallback HTTP reste actif periodiquement si WS est indisponible.

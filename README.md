@@ -7,6 +7,7 @@ Hub local HTTPS/WSS pour projets perso (Mac mini, Node.js/TypeScript).
 - Statut implementation + reste a faire: `docs/IMPLEMENTATION_STATUS.md`
 - Runbook ops (TLS local, trust iOS/macOS, supervision): `docs/OPS_RUNBOOK.md`
 - Guide dev exemples music: `examples/README.md`
+- Guide dev exemples Python: `examples/python/README.md`
 
 ## Ce qui est inclus
 
@@ -19,6 +20,7 @@ Hub local HTTPS/WSS pour projets perso (Mac mini, Node.js/TypeScript).
   - sécurité LAN minimale (`X-Hub-Token`, allowlist subnet, rate/size limits)
   - métriques + inspector
   - console web servie sous `/console`
+  - flux dashboard realtime WS (`hub.dashboard`) + fallback HTTP
   - persistance SQLite optionnelle
 - `@superhub/sdk`:
   - client TS (Node + web) avec reconnect/backoff
@@ -62,6 +64,7 @@ npm run dev
 - en direct: `http://127.0.0.1:7777/console/`
 - via Caddy/TLS: `https://hub.local/console/`
 - pairing: `https://hub.local/console/pair`
+- dashboard realtime: WS interne auto (`/ws`) + fallback poll 5s
 
 ## Caddy + TLS local (LAN)
 
@@ -106,6 +109,7 @@ Tous les messages utilisent l’envelope `HubEnvelope` (version `v=1`) avec `typ
 
 - Provider music: `examples/music-provider.ts`
 - Controller: `examples/music-controller.ts`
+- Python: `examples/python/` (music + ISS + demo HTTP)
 
 Lancer via `tsx` (après `npm install`):
 
@@ -136,6 +140,10 @@ HUB_TOKEN=... npm run diag
 
 - Delivery pub/sub en best-effort, ordre global non garanti.
 - Backpressure par session: buffer borné + drop quand surcharge.
+- Console:
+  - state viewer realtime via `state_patch` WS
+  - dashboard realtime via event `hub.dashboard` WS
+  - fallback HTTP periodique si WS indisponible
 - Validation Zod par `name` + `schemaVersion`:
   - `reject` en dev par défaut
   - `warn` possible en prod
