@@ -4,6 +4,7 @@ Ce dossier contient 2 exemples Node.js/TS pour valider le flux SuperHub en local
 
 - `music-provider.ts`: service provider `music`
 - `music-controller.ts`: client controller qui appelle une RPC `music.play`
+- `python/`: memes flux en Python (WS + HTTP), voir `examples/python/README.md`
 
 ## Prerequis
 
