@@ -1,0 +1,50 @@
+{
+  "domain": "hub.local",
+  "listen": {
+    "host": "127.0.0.1",
+    "port": 7777
+  },
+  "security": {
+    "token": "CHANGE_ME_SUPERHUB_TOKEN",
+    "pairingEnabled": true,
+    "allowlistSubnets": [
+      "*"
+    ]
+  },
+  "cors": {
+    "origins": [
+      "https://hub.local"
+    ],
+    "allowHeaders": [
+      "Content-Type",
+      "X-Hub-Token"
+    ]
+  },
+  "limits": {
+    "maxMessageSizeBytes": 262144,
+    "maxSessionBufferMessages": 400,
+    "maxSessionBufferedBytes": 1048576,
+    "dedupWindowMs": 10000,
+    "heartbeatIntervalMs": 10000,
+    "heartbeatTimeoutMs": 30000,
+    "inspectorMaxMessages": 500,
+    "rateLimitPerMinute": 1800
+  },
+  "validation": {
+    "mode": "reject"
+  },
+  "logging": {
+    "level": "info",
+    "routeDebug": false
+  },
+  "persistence": {
+    "enabled": true,
+    "sqlitePath": "packages/hub/data/hub.sqlite",
+    "auditEnabled": true,
+    "auditTtlDays": 14
+  },
+  "staticHosting": {
+    "consoleDir": "packages/hub/public/console",
+    "appsDir": "packages/hub/public/apps"
+  }
+}
