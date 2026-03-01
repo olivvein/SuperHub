@@ -67,7 +67,8 @@ body {
 button,
 .tabs a,
 #inspector-filter,
-#state-prefix {
+#state-prefix,
+.control-card input {
   border: 1px solid var(--border);
   border-radius: 8px;
   padding: 10px;
@@ -183,6 +184,51 @@ main {
   width: 100%;
   height: 140px;
   border-radius: 8px;
+}
+
+.control-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 12px;
+}
+
+.control-card {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: #fcfaf6;
+  padding: 12px;
+}
+
+.control-card h3 {
+  margin: 0 0 10px;
+  font-size: 15px;
+}
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 72px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: #d7f4e8;
+  color: #0f5132;
+  border: 1px solid #a7e3c7;
+  font-size: 12px;
+}
+
+.pill.pill-paused {
+  background: #ffe6e2;
+  color: #7f1d1d;
+  border-color: #f5b5a8;
+}
+
+#muted-services-output,
+#muted-topics-output,
+#clear-queues-result,
+#control-output {
+  margin-top: 10px;
+  max-height: 180px;
 }
 
 table {

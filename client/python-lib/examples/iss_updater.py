@@ -7,6 +7,7 @@ import os
 import pathlib
 import sys
 import time
+import urllib.error
 import urllib.request
 from dataclasses import dataclass
 from typing import Optional, Tuple
@@ -22,7 +23,12 @@ except ImportError:
     sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
     from superhub_client import SuperHubClient, now_ms
 
-CELESTRAK_STATIONS_URL = "http://www.celestrak.com/NORAD/elements/stations.txt"
+DEFAULT_TLE_SOURCES = (
+    "https://celestrak.org/NORAD/elements/gp.php?GROUP=stations&FORMAT=tle",
+    "https://celestrak.org/NORAD/elements/stations.txt",
+    "http://www.celestrak.com/NORAD/elements/stations.txt",
+)
+DEFAULT_TLE_CACHE_FILE = os.path.join(os.path.expanduser("~"), ".superhub", "iss_tle.txt")
 DEFAULT_SEND_HZ = 1.0
 MIN_SEND_HZ = 1.0
 MAX_SEND_HZ = 50.0
@@ -41,8 +47,7 @@ class IssTle:
     line2: str
 
 
-async def fetch_iss_tle() -> IssTle:
-    text = await asyncio.to_thread(_fetch_text, CELESTRAK_STATIONS_URL, 10.0)
+def parse_iss_tle(text: str) -> IssTle:
     lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
 
     for i in range(0, len(lines) - 2, 3):
@@ -55,7 +60,49 @@ async def fetch_iss_tle() -> IssTle:
         if "ISS" in name.upper() and l1.startswith("1 ") and l2.startswith("2 "):
             return IssTle(name=name, line1=l1, line2=l2)
 
-    raise RuntimeError("ISS TLE not found in stations.txt")
+    raise RuntimeError("ISS TLE not found in source payload")
+
+
+def resolve_tle_sources() -> list[str]:
+    raw = os.getenv("ISS_TLE_URLS", "").strip()
+    if not raw:
+        return list(DEFAULT_TLE_SOURCES)
+
+    sources = [item.strip() for item in raw.split(",") if item.strip()]
+    return sources or list(DEFAULT_TLE_SOURCES)
+
+
+def load_cached_tle(cache_file: str) -> Optional[IssTle]:
+    try:
+        with open(cache_file, "r", encoding="utf-8") as handle:
+            text = handle.read()
+        return parse_iss_tle(text)
+    except Exception:
+        return None
+
+
+def save_cached_tle(cache_file: str, tle: IssTle) -> None:
+    try:
+        os.makedirs(os.path.dirname(cache_file), exist_ok=True)
+        with open(cache_file, "w", encoding="utf-8") as handle:
+            handle.write(f"{tle.name}\n{tle.line1}\n{tle.line2}\n")
+    except Exception:
+        # Cache write failure should never break realtime updates.
+        return
+
+
+async def fetch_iss_tle(sources: list[str]) -> IssTle:
+    errors: list[str] = []
+    for source in sources:
+        try:
+            text = await asyncio.to_thread(_fetch_text, source, 10.0)
+            return parse_iss_tle(text)
+        except urllib.error.HTTPError as exc:
+            errors.append(f"{source} -> HTTP {exc.code}")
+        except Exception as exc:
+            errors.append(f"{source} -> {exc}")
+
+    raise RuntimeError("All TLE sources failed: " + "; ".join(errors))
 
 
 def gmst_from_jd(jd_ut1: float) -> float:
@@ -153,35 +200,70 @@ async def run(send_hz: float) -> None:
     sat: Optional[Satrec] = None
     tle: Optional[IssTle] = None
     last_tle_fetch = 0.0
+    next_tle_retry_at = 0.0
+    last_tle_error_log_at = 0.0
+    tle_sources = resolve_tle_sources()
+    tle_cache_file = os.getenv("ISS_TLE_CACHE_FILE", DEFAULT_TLE_CACHE_FILE)
+    tle_refresh_s = 6 * 3600.0
+    tle_retry_s = 15.0
+    tle_error_log_interval_s = 15.0
 
-    async def ensure_tle() -> None:
-        nonlocal sat, tle, last_tle_fetch
+    async def ensure_tle() -> bool:
+        nonlocal sat, tle, last_tle_fetch, next_tle_retry_at, last_tle_error_log_at
         now_s = time.time()
-        if sat is not None and (now_s - last_tle_fetch) < 6 * 3600:
-            return
+        if sat is not None and (now_s - last_tle_fetch) < tle_refresh_s:
+            return True
+        if now_s < next_tle_retry_at:
+            return sat is not None
 
-        tle = await fetch_iss_tle()
-        sat = Satrec.twoline2rv(tle.line1, tle.line2)
-        last_tle_fetch = now_s
-        print("TLE loaded:", tle.name)
+        try:
+            tle = await fetch_iss_tle(tle_sources)
+            sat = Satrec.twoline2rv(tle.line1, tle.line2)
+            last_tle_fetch = now_s
+            next_tle_retry_at = 0.0
+            print("TLE loaded:", tle.name)
+            save_cached_tle(tle_cache_file, tle)
+            try:
+                await client.set_state(
+                    "state/iss/tle",
+                    {
+                        "name": tle.name,
+                        "line1": tle.line1,
+                        "line2": tle.line2,
+                        "fetchedAt": now_ms(),
+                    },
+                )
+            except Exception as exc:
+                print("warning: failed to publish TLE state:", exc)
+            return True
+        except Exception as exc:
+            next_tle_retry_at = now_s + tle_retry_s
 
-        await client.set_state(
-            "state/iss/tle",
-            {
-                "name": tle.name,
-                "line1": tle.line1,
-                "line2": tle.line2,
-                "fetchedAt": now_ms(),
-            },
-        )
+            if sat is None:
+                cached = load_cached_tle(tle_cache_file)
+                if cached is not None:
+                    tle = cached
+                    sat = Satrec.twoline2rv(cached.line1, cached.line2)
+                    last_tle_fetch = now_s
+                    print(f"TLE fetch failed, using cached TLE from {tle_cache_file}: {cached.name}")
+                    return True
+
+            if (now_s - last_tle_error_log_at) >= tle_error_log_interval_s:
+                print(f"TLE fetch failed: {exc}. Next retry in {tle_retry_s:.0f}s.")
+                last_tle_error_log_at = now_s
+            return sat is not None
 
     try:
         next_tick = time.monotonic()
         while True:
-            await ensure_tle()
-            assert sat is not None
+            if not await ensure_tle():
+                await asyncio.sleep(min(tle_retry_s, 1.0))
+                next_tick = time.monotonic()
+                continue
 
             try:
+                if sat is None:
+                    continue
                 lat, lon, alt_km = iss_position_now(sat)
                 payload = {"lat": lat, "lon": lon, "altKm": alt_km, "at": now_ms()}
                 print(f"ISS position: {lat:.4f}, {lon:.4f}, {alt_km:.2f} km")

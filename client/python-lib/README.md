@@ -56,3 +56,10 @@ python -m superhub_client.examples.iss_provider
 python -m superhub_client.examples.http_api_demo
 python -m superhub_client.examples.iss_updater --hz 10
 ```
+
+ISS updater TLE source overrides:
+
+```bash
+ISS_TLE_URLS="https://celestrak.org/NORAD/elements/gp.php?GROUP=stations&FORMAT=tle,https://celestrak.org/NORAD/elements/stations.txt"
+ISS_TLE_CACHE_FILE="$HOME/.superhub/iss_tle.txt"
+```

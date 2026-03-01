@@ -23,6 +23,7 @@
 
     <nav class="tabs">
       <button data-tab="dashboard" class="active">Dashboard</button>
+      <button data-tab="control-tab">Control</button>
       <button data-tab="diagnostics-tab">Diagnostics</button>
       <button data-tab="services">Services</button>
       <button data-tab="clients">Clients</button>
@@ -133,6 +134,72 @@
         <pre id="diagnostics-full"></pre>
       </section>
 
+      <section id="control-tab" class="panel">
+        <h2>Control Plane</h2>
+        <div class="control-grid">
+          <article class="control-card">
+            <h3>Traffic Toggles</h3>
+            <div class="row">
+              <button id="toggle-inbound">Pause inbound</button>
+              <span id="inbound-state" class="pill">running</span>
+            </div>
+            <div class="row">
+              <button id="toggle-state-broadcast">Pause state broadcast</button>
+              <span id="state-broadcast-state" class="pill">running</span>
+            </div>
+          </article>
+
+          <article class="control-card">
+            <h3>Disconnect</h3>
+            <div class="row">
+              <input id="disconnect-session-id" type="text" placeholder="sessionId" />
+              <button id="disconnect-session-btn">Disconnect session</button>
+            </div>
+            <div class="row">
+              <input id="disconnect-client-id" type="text" placeholder="clientId" />
+              <button id="disconnect-client-btn">Disconnect client</button>
+            </div>
+          </article>
+
+          <article class="control-card">
+            <h3>Mute Service</h3>
+            <div class="row">
+              <input id="mute-service-input" type="text" placeholder="serviceName" />
+              <button id="mute-service-btn">Mute</button>
+              <button id="unmute-service-btn">Unmute</button>
+            </div>
+            <pre id="muted-services-output"></pre>
+          </article>
+
+          <article class="control-card">
+            <h3>Mute Topic</h3>
+            <div class="row">
+              <input id="mute-topic-input" type="text" placeholder="music.* or iss.position" />
+              <button id="mute-topic-btn">Mute</button>
+              <button id="unmute-topic-btn">Unmute</button>
+            </div>
+            <pre id="muted-topics-output"></pre>
+          </article>
+
+          <article class="control-card">
+            <h3>Queues</h3>
+            <div class="row">
+              <button id="clear-queues-global-btn">Clear all queues</button>
+            </div>
+            <div class="row">
+              <input id="clear-queues-session-id" type="text" placeholder="sessionId" />
+              <button id="clear-queues-session-btn">Clear session queue</button>
+            </div>
+            <pre id="clear-queues-result"></pre>
+          </article>
+
+          <article class="control-card">
+            <h3>Control State</h3>
+            <pre id="control-output"></pre>
+          </article>
+        </div>
+      </section>
+
       <section id="services" class="panel">
         <h2>Services</h2>
         <table>
@@ -204,6 +271,27 @@
       const reloadStateButton = document.getElementById("reload-state");
       const stateOutput = document.getElementById("state-output");
       const configOutput = document.getElementById("config-output");
+      const controlOutput = document.getElementById("control-output");
+      const inboundState = document.getElementById("inbound-state");
+      const stateBroadcastState = document.getElementById("state-broadcast-state");
+      const toggleInboundButton = document.getElementById("toggle-inbound");
+      const toggleStateBroadcastButton = document.getElementById("toggle-state-broadcast");
+      const disconnectSessionInput = document.getElementById("disconnect-session-id");
+      const disconnectClientInput = document.getElementById("disconnect-client-id");
+      const disconnectSessionButton = document.getElementById("disconnect-session-btn");
+      const disconnectClientButton = document.getElementById("disconnect-client-btn");
+      const muteServiceInput = document.getElementById("mute-service-input");
+      const muteTopicInput = document.getElementById("mute-topic-input");
+      const muteServiceButton = document.getElementById("mute-service-btn");
+      const unmuteServiceButton = document.getElementById("unmute-service-btn");
+      const muteTopicButton = document.getElementById("mute-topic-btn");
+      const unmuteTopicButton = document.getElementById("unmute-topic-btn");
+      const mutedServicesOutput = document.getElementById("muted-services-output");
+      const mutedTopicsOutput = document.getElementById("muted-topics-output");
+      const clearQueuesGlobalButton = document.getElementById("clear-queues-global-btn");
+      const clearQueuesSessionInput = document.getElementById("clear-queues-session-id");
+      const clearQueuesSessionButton = document.getElementById("clear-queues-session-btn");
+      const clearQueuesResult = document.getElementById("clear-queues-result");
 
       const tabs = Array.from(document.querySelectorAll(".tabs button[data-tab]"));
       const panels = Array.from(document.querySelectorAll(".panel"));
@@ -227,6 +315,12 @@
       let inspectorMessages = [];
       let stateEntriesByPath = new Map();
       let dashboardHistory = [];
+      let currentControlState = {
+        inboundPaused: false,
+        stateBroadcastPaused: false,
+        mutedServices: [],
+        mutedTopics: []
+      };
 
       const savedToken = localStorage.getItem("superhub.token") || "";
       tokenInput.value = savedToken;
@@ -275,6 +369,46 @@
         renderInspector();
       });
 
+      toggleInboundButton.addEventListener("click", () => {
+        void setInboundPaused(!currentControlState.inboundPaused);
+      });
+
+      toggleStateBroadcastButton.addEventListener("click", () => {
+        void setStateBroadcastPaused(!currentControlState.stateBroadcastPaused);
+      });
+
+      disconnectSessionButton.addEventListener("click", () => {
+        void disconnectBySession();
+      });
+
+      disconnectClientButton.addEventListener("click", () => {
+        void disconnectByClient();
+      });
+
+      muteServiceButton.addEventListener("click", () => {
+        void muteOrUnmute("mute", "service", muteServiceInput.value);
+      });
+
+      unmuteServiceButton.addEventListener("click", () => {
+        void muteOrUnmute("unmute", "service", muteServiceInput.value);
+      });
+
+      muteTopicButton.addEventListener("click", () => {
+        void muteOrUnmute("mute", "topic", muteTopicInput.value);
+      });
+
+      unmuteTopicButton.addEventListener("click", () => {
+        void muteOrUnmute("unmute", "topic", muteTopicInput.value);
+      });
+
+      clearQueuesGlobalButton.addEventListener("click", () => {
+        void clearQueues();
+      });
+
+      clearQueuesSessionButton.addEventListener("click", () => {
+        void clearQueues(clearQueuesSessionInput.value.trim() || null);
+      });
+
       window.addEventListener("resize", () => {
         if (chartResizeRaf) {
           cancelAnimationFrame(chartResizeRaf);
@@ -306,6 +440,16 @@
         }
 
         return response.json();
+      }
+
+      async function controlApi(path, body = {}) {
+        return api(path, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify(body)
+        });
       }
 
       function renderHealth(data, metrics) {
@@ -678,6 +822,9 @@
         }
         if (diagnostics) {
           renderDiagnostics(diagnostics);
+          if (diagnostics.control) {
+            renderControl(diagnostics.control);
+          }
         }
         if (health && metrics) {
           upsertDashboardHistory(health, metrics, diagnostics);
@@ -739,14 +886,15 @@
 
       async function refreshAll() {
         try {
-          const [health, services, clients, messages, metrics, diagnostics, config] = await Promise.all([
+          const [health, services, clients, messages, metrics, diagnostics, config, control] = await Promise.all([
             api("/api/health"),
             api("/api/services"),
             api("/api/clients"),
             api("/api/messages"),
             api("/api/metrics"),
             api("/api/diagnostics"),
-            api("/api/config")
+            api("/api/config"),
+            api("/api/control")
           ]);
 
           clearStatus();
@@ -760,6 +908,9 @@
           metricsOutput.textContent = JSON.stringify(metrics, null, 2);
           renderDiagnostics(diagnostics);
           upsertDashboardHistory(health, metrics, diagnostics);
+          if (control && typeof control.control === "object") {
+            renderControl(control.control);
+          }
           configOutput.textContent = JSON.stringify(config, null, 2);
 
           await refreshState();
@@ -789,11 +940,135 @@
           routing: diagnostics?.routing,
           sessions: diagnostics?.sessions,
           queues: diagnostics?.queues,
-          inspector: diagnostics?.inspector
+          inspector: diagnostics?.inspector,
+          control: diagnostics?.control
         };
 
         diagnosticsOutput.textContent = JSON.stringify(compact, null, 2);
         diagnosticsFullOutput.textContent = JSON.stringify(diagnostics, null, 2);
+      }
+
+      function renderControl(control) {
+        if (!control || typeof control !== "object") {
+          return;
+        }
+
+        currentControlState = {
+          inboundPaused: Boolean(control.inboundPaused),
+          stateBroadcastPaused: Boolean(control.stateBroadcastPaused),
+          mutedServices: Array.isArray(control.mutedServices) ? control.mutedServices : [],
+          mutedTopics: Array.isArray(control.mutedTopics) ? control.mutedTopics : []
+        };
+
+        controlOutput.textContent = JSON.stringify(currentControlState, null, 2);
+        mutedServicesOutput.textContent = JSON.stringify(currentControlState.mutedServices, null, 2);
+        mutedTopicsOutput.textContent = JSON.stringify(currentControlState.mutedTopics, null, 2);
+
+        setPillState(inboundState, currentControlState.inboundPaused, "paused", "running");
+        setPillState(stateBroadcastState, currentControlState.stateBroadcastPaused, "paused", "running");
+
+        toggleInboundButton.textContent = currentControlState.inboundPaused ? "Resume inbound" : "Pause inbound";
+        toggleStateBroadcastButton.textContent = currentControlState.stateBroadcastPaused
+          ? "Resume state broadcast"
+          : "Pause state broadcast";
+      }
+
+      function setPillState(element, paused, pausedLabel, runningLabel) {
+        if (!element) {
+          return;
+        }
+        element.textContent = paused ? pausedLabel : runningLabel;
+        element.classList.toggle("pill-paused", paused);
+      }
+
+      async function setInboundPaused(paused) {
+        try {
+          const response = await controlApi("/api/control/inbound", { paused });
+          if (response?.control) {
+            renderControl(response.control);
+          }
+          await refreshAll();
+        } catch (error) {
+          setStatus(`Control error: ${String(error)}`, "error");
+        }
+      }
+
+      async function setStateBroadcastPaused(paused) {
+        try {
+          const response = await controlApi("/api/control/state-broadcast", { paused });
+          if (response?.control) {
+            renderControl(response.control);
+          }
+          await refreshAll();
+        } catch (error) {
+          setStatus(`Control error: ${String(error)}`, "error");
+        }
+      }
+
+      async function disconnectBySession() {
+        const sessionId = disconnectSessionInput.value.trim();
+        if (!sessionId) {
+          setStatus("sessionId is required", "warn");
+          disconnectSessionInput.focus();
+          return;
+        }
+
+        try {
+          const response = await controlApi("/api/control/disconnect", { sessionId });
+          clearQueuesResult.textContent = JSON.stringify(response, null, 2);
+          await refreshAll();
+        } catch (error) {
+          setStatus(`Control error: ${String(error)}`, "error");
+        }
+      }
+
+      async function disconnectByClient() {
+        const clientId = disconnectClientInput.value.trim();
+        if (!clientId) {
+          setStatus("clientId is required", "warn");
+          disconnectClientInput.focus();
+          return;
+        }
+
+        try {
+          const response = await controlApi("/api/control/disconnect", { clientId });
+          clearQueuesResult.textContent = JSON.stringify(response, null, 2);
+          await refreshAll();
+        } catch (error) {
+          setStatus(`Control error: ${String(error)}`, "error");
+        }
+      }
+
+      async function muteOrUnmute(action, kind, value) {
+        const normalized = String(value || "").trim();
+        if (!normalized) {
+          setStatus(`${kind} value is required`, "warn");
+          return;
+        }
+
+        try {
+          const response = await controlApi(`/api/control/${action}`, {
+            kind,
+            value: normalized
+          });
+          if (response?.control) {
+            renderControl(response.control);
+          }
+          await refreshAll();
+        } catch (error) {
+          setStatus(`Control error: ${String(error)}`, "error");
+        }
+      }
+
+      async function clearQueues(sessionId = null) {
+        const body = sessionId ? { sessionId } : {};
+        try {
+          const response = await controlApi("/api/control/clear-queues", body);
+          clearQueuesResult.textContent = JSON.stringify(response, null, 2);
+          await refreshAll();
+        } catch (error) {
+          setStatus(`Control error: ${String(error)}`, "error");
+        }
       }
 
       function connectWs() {

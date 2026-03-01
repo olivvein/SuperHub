@@ -103,6 +103,11 @@ print(http.services())
   - verify `HUB_TOKEN` and allowlist.
 - no events:
   - verify same hub URL/token across all clients.
+- ISS updater exits with `HTTP Error 403` on Celestrak:
+  - updater now retries across multiple HTTPS/HTTP TLE sources and uses local cache.
+  - optional overrides:
+  - `ISS_TLE_URLS="https://.../stations.txt,https://.../gp.php?..."`
+  - `ISS_TLE_CACHE_FILE="$HOME/.superhub/iss_tle.txt"`
 
 ## 6) ISS examples in python-lib
 

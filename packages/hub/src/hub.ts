@@ -128,6 +128,45 @@ interface HttpRpcBody {
   timeoutMs?: number;
 }
 
+interface ControlDisconnectBody {
+  sessionId?: string;
+  clientId?: string;
+}
+
+interface ControlMuteBody {
+  kind?: "service" | "topic";
+  value?: string;
+}
+
+interface ControlToggleBody {
+  paused?: boolean;
+}
+
+interface ControlClearQueuesBody {
+  sessionId?: string;
+  clientId?: string;
+}
+
+interface ControlState {
+  inboundPaused: boolean;
+  stateBroadcastPaused: boolean;
+  mutedServices: Set<string>;
+  mutedTopics: Set<string>;
+}
+
+interface ControlSnapshot {
+  inboundPaused: boolean;
+  stateBroadcastPaused: boolean;
+  mutedServices: string[];
+  mutedTopics: string[];
+}
+
+interface ControlBlock {
+  code: "INBOUND_PAUSED" | "MUTED_SERVICE" | "MUTED_TOPIC" | "STATE_BROADCAST_PAUSED";
+  message: string;
+  details?: unknown;
+}
+
 interface PairPayload {
   url: string;
   token?: string;
@@ -166,6 +205,12 @@ export async function createHubRuntime(config: HubConfig): Promise<HubRuntime> {
   const messageNameCounter = new Map<string, number>();
   const clientSessionHistory = new Map<string, string>();
   const queuedSessionIds = new Set<string>();
+  const controlState: ControlState = {
+    inboundPaused: false,
+    stateBroadcastPaused: false,
+    mutedServices: new Set(),
+    mutedTopics: new Set()
+  };
 
   const metrics: Metrics = {
     messagesIn: {
@@ -402,6 +447,224 @@ export async function createHubRuntime(config: HubConfig): Promise<HubRuntime> {
   );
 
   app.get(
+    "/api/control",
+    {
+      preHandler: [authorizeHttp]
+    },
+    async () => {
+      return {
+        control: controlSnapshot()
+      };
+    }
+  );
+
+  app.post(
+    "/api/control/disconnect",
+    {
+      preHandler: [authorizeHttp]
+    },
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      const body = (request.body ?? {}) as ControlDisconnectBody;
+      const sessionId = normalizeControlValue(body.sessionId);
+      const clientId = normalizeControlValue(body.clientId);
+
+      if (!sessionId && !clientId) {
+        return reply.code(400).send({ error: hubError("INVALID_REQUEST", "sessionId or clientId is required") });
+      }
+
+      const targets: SessionState[] = sessionId
+        ? [sessions.get(sessionId)].filter((session): session is SessionState => Boolean(session))
+        : findSessionsByClientId(clientId!);
+
+      if (targets.length === 0) {
+        return reply.code(404).send({ error: hubError("NOT_FOUND", "No matching session found") });
+      }
+
+      for (const session of targets) {
+        session.socket.close(1008, "Disconnected by control plane");
+      }
+
+      logger.warn("control.disconnect", {
+        sessionId,
+        clientId,
+        disconnected: targets.map((session) => session.sessionId)
+      });
+
+      return {
+        ok: true,
+        disconnected: targets.map((session) => ({
+          sessionId: session.sessionId,
+          clientId: session.clientId,
+          serviceName: session.serviceName
+        }))
+      };
+    }
+  );
+
+  app.post(
+    "/api/control/mute",
+    {
+      preHandler: [authorizeHttp]
+    },
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      const body = (request.body ?? {}) as ControlMuteBody;
+      const kind = body.kind;
+      const value = normalizeControlValue(body.value);
+
+      if (!kind || (kind !== "service" && kind !== "topic")) {
+        return reply.code(400).send({ error: hubError("INVALID_REQUEST", "kind must be 'service' or 'topic'") });
+      }
+      if (!value) {
+        return reply.code(400).send({ error: hubError("INVALID_REQUEST", "value is required") });
+      }
+
+      if (kind === "service") {
+        controlState.mutedServices.add(value);
+      } else {
+        controlState.mutedTopics.add(value);
+      }
+
+      logger.warn("control.mute", {
+        kind,
+        value,
+        control: controlSnapshot()
+      });
+
+      return {
+        ok: true,
+        control: controlSnapshot()
+      };
+    }
+  );
+
+  app.post(
+    "/api/control/unmute",
+    {
+      preHandler: [authorizeHttp]
+    },
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      const body = (request.body ?? {}) as ControlMuteBody;
+      const kind = body.kind;
+      const value = normalizeControlValue(body.value);
+
+      if (!kind || (kind !== "service" && kind !== "topic")) {
+        return reply.code(400).send({ error: hubError("INVALID_REQUEST", "kind must be 'service' or 'topic'") });
+      }
+      if (!value) {
+        return reply.code(400).send({ error: hubError("INVALID_REQUEST", "value is required") });
+      }
+
+      if (kind === "service") {
+        controlState.mutedServices.delete(value);
+      } else {
+        controlState.mutedTopics.delete(value);
+      }
+
+      logger.warn("control.unmute", {
+        kind,
+        value,
+        control: controlSnapshot()
+      });
+
+      return {
+        ok: true,
+        control: controlSnapshot()
+      };
+    }
+  );
+
+  app.post(
+    "/api/control/inbound",
+    {
+      preHandler: [authorizeHttp]
+    },
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      const body = (request.body ?? {}) as ControlToggleBody;
+      if (typeof body.paused !== "boolean") {
+        return reply.code(400).send({ error: hubError("INVALID_REQUEST", "paused boolean is required") });
+      }
+
+      controlState.inboundPaused = body.paused;
+      logger.warn("control.inbound", {
+        paused: controlState.inboundPaused
+      });
+
+      return {
+        ok: true,
+        control: controlSnapshot()
+      };
+    }
+  );
+
+  app.post(
+    "/api/control/state-broadcast",
+    {
+      preHandler: [authorizeHttp]
+    },
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      const body = (request.body ?? {}) as ControlToggleBody;
+      if (typeof body.paused !== "boolean") {
+        return reply.code(400).send({ error: hubError("INVALID_REQUEST", "paused boolean is required") });
+      }
+
+      controlState.stateBroadcastPaused = body.paused;
+      logger.warn("control.state_broadcast", {
+        paused: controlState.stateBroadcastPaused
+      });
+
+      return {
+        ok: true,
+        control: controlSnapshot()
+      };
+    }
+  );
+
+  app.post(
+    "/api/control/clear-queues",
+    {
+      preHandler: [authorizeHttp]
+    },
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      const body = (request.body ?? {}) as ControlClearQueuesBody;
+      const sessionId = normalizeControlValue(body.sessionId);
+      const clientId = normalizeControlValue(body.clientId);
+
+      const targets: SessionState[] = sessionId
+        ? [sessions.get(sessionId)].filter((session): session is SessionState => Boolean(session))
+        : clientId
+        ? findSessionsByClientId(clientId)
+        : Array.from(sessions.values());
+
+      if (targets.length === 0) {
+        return reply.code(404).send({ error: hubError("NOT_FOUND", "No matching session found") });
+      }
+
+      let clearedMessages = 0;
+      let clearedBytes = 0;
+      for (const session of targets) {
+        const cleared = clearSessionQueue(session);
+        clearedMessages += cleared.messages;
+        clearedBytes += cleared.bytes;
+      }
+
+      logger.warn("control.clear_queues", {
+        sessionId,
+        clientId,
+        targets: targets.length,
+        clearedMessages,
+        clearedBytes
+      });
+
+      return {
+        ok: true,
+        targets: targets.length,
+        clearedMessages,
+        clearedBytes
+      };
+    }
+  );
+
+  app.get(
     "/api/state",
     {
       preHandler: [authorizeHttp]
@@ -428,6 +691,10 @@ export async function createHubRuntime(config: HubConfig): Promise<HubRuntime> {
 
       if (!body?.name) {
         return reply.code(400).send({ error: hubError("INVALID_REQUEST", "name is required") });
+      }
+
+      if (controlState.inboundPaused) {
+        return reply.code(503).send({ error: hubError("INBOUND_PAUSED", "Inbound traffic is paused by control plane") });
       }
 
       const envelope = createEnvelope({
@@ -457,6 +724,10 @@ export async function createHubRuntime(config: HubConfig): Promise<HubRuntime> {
       const body = request.body as HttpRpcBody;
       if (!body?.serviceName || !body?.method) {
         return reply.code(400).send({ error: hubError("INVALID_REQUEST", "serviceName and method are required") });
+      }
+
+      if (controlState.inboundPaused) {
+        return reply.code(503).send({ error: hubError("INBOUND_PAUSED", "Inbound traffic is paused by control plane") });
       }
 
       const correlationId = randomUUID();
@@ -816,6 +1087,7 @@ export async function createHubRuntime(config: HubConfig): Promise<HubRuntime> {
     inspector: {
       bufferedMessages: number;
     };
+    control: ControlSnapshot;
     config: {
       domain: string;
       listen: HubConfig["listen"];
@@ -857,6 +1129,7 @@ export async function createHubRuntime(config: HubConfig): Promise<HubRuntime> {
       inspector: {
         bufferedMessages: inspector.length
       },
+      control: controlSnapshot(),
       config: {
         domain: config.domain,
         listen: config.listen,
@@ -867,6 +1140,15 @@ export async function createHubRuntime(config: HubConfig): Promise<HubRuntime> {
           allowlistSubnets: config.security.allowlistSubnets
         }
       }
+    };
+  }
+
+  function controlSnapshot(): ControlSnapshot {
+    return {
+      inboundPaused: controlState.inboundPaused,
+      stateBroadcastPaused: controlState.stateBroadcastPaused,
+      mutedServices: Array.from(controlState.mutedServices).sort(),
+      mutedTopics: Array.from(controlState.mutedTopics).sort()
     };
   }
 
@@ -934,6 +1216,14 @@ export async function createHubRuntime(config: HubConfig): Promise<HubRuntime> {
     return { ok: false, reason: "Missing or invalid hub token" };
   }
 
+  function normalizeControlValue(value: unknown): string | null {
+    if (typeof value !== "string") {
+      return null;
+    }
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? trimmed : null;
+  }
+
   function handleSocketMessage(session: SessionState, raw: string): void {
     const rawBytes = Buffer.byteLength(raw, "utf8");
     metrics.bytesIn += rawBytes;
@@ -998,6 +1288,28 @@ export async function createHubRuntime(config: HubConfig): Promise<HubRuntime> {
     const envelope = envelopeResult.data;
 
     if (isDuplicateMessage(session, envelope.id)) {
+      return;
+    }
+
+    if (controlState.inboundPaused && envelope.type !== "presence") {
+      metrics.droppedMessages += 1;
+      logger.warn("control.inbound.drop", {
+        sessionId: session.sessionId,
+        clientId: session.clientId,
+        type: envelope.type,
+        name: envelope.name
+      });
+      if (shouldTrackInternalEnvelope(envelope)) {
+        pushInspector("drop", session.sessionId, envelope, "inbound paused");
+      }
+      enqueueForSession(
+        session,
+        errorEnvelope("INBOUND_PAUSED", "Inbound traffic is paused by control plane", session.clientId, {
+          type: envelope.type,
+          name: envelope.name
+        }),
+        true
+      );
       return;
     }
 
@@ -1273,6 +1585,12 @@ export async function createHubRuntime(config: HubConfig): Promise<HubRuntime> {
   }
 
   function routePublishLike(sourceSession: SessionState | null, envelope: HubEnvelope): void {
+    const controlBlock = controlBlockForEnvelope(envelope);
+    if (controlBlock) {
+      trackControlDrop(sourceSession?.sessionId ?? "control", envelope, controlBlock.message);
+      return;
+    }
+
     const recipients = resolveRecipientsForPublish(envelope, sourceSession?.sessionId);
     if (recipients.length === 0) {
       return;
@@ -1312,6 +1630,25 @@ export async function createHubRuntime(config: HubConfig): Promise<HubRuntime> {
 
     if (isHubTarget(envelope.target)) {
       handleHubRpc(sourceSession, envelope, method, payload.data);
+      return;
+    }
+
+    const controlBlock = controlBlockForEnvelope(envelope);
+    if (controlBlock) {
+      trackControlDrop(sourceSession?.sessionId ?? "control", envelope, controlBlock.message);
+      const blockedResponse: RpcResponsePayload = {
+        ok: false,
+        error: hubError(controlBlock.code, controlBlock.message, controlBlock.details)
+      };
+
+      if (sourceSession) {
+        enqueueForSession(sourceSession, createRpcResponseEnvelope(envelope, blockedResponse, sourceSession.clientId), true);
+      } else if (envelope.correlationId && pendingHttpRpc.has(envelope.correlationId)) {
+        const pending = pendingHttpRpc.get(envelope.correlationId)!;
+        clearTimeout(pending.timeout);
+        pendingHttpRpc.delete(envelope.correlationId);
+        pending.resolve(blockedResponse);
+      }
       return;
     }
 
@@ -1423,6 +1760,12 @@ export async function createHubRuntime(config: HubConfig): Promise<HubRuntime> {
       return;
     }
 
+    const controlBlock = controlBlockForEnvelope(envelope);
+    if (controlBlock) {
+      trackControlDrop(sourceSession?.sessionId ?? "control", envelope, controlBlock.message);
+      return;
+    }
+
     const parsed = RpcResponsePayloadSchema.safeParse(envelope.payload);
     if (!parsed.success) {
       return;
@@ -1519,6 +1862,17 @@ export async function createHubRuntime(config: HubConfig): Promise<HubRuntime> {
         value
       }
     });
+
+    if (controlState.stateBroadcastPaused) {
+      trackControlDrop("control", envelope, "state broadcast paused");
+      return;
+    }
+
+    const controlBlock = controlBlockForEnvelope(envelope);
+    if (controlBlock) {
+      trackControlDrop("control", envelope, controlBlock.message);
+      return;
+    }
 
     const recipients: SessionState[] = [];
     for (const session of sessions.values()) {
@@ -1690,6 +2044,30 @@ export async function createHubRuntime(config: HubConfig): Promise<HubRuntime> {
       clientId: session.clientId,
       serviceName: session.serviceName
     });
+  }
+
+  function findSessionsByClientId(clientId: string): SessionState[] {
+    const sessionIds = sessionIdsByClient.get(clientId);
+    if (!sessionIds) {
+      return [];
+    }
+    return Array.from(sessionIds)
+      .map((id) => sessions.get(id))
+      .filter((session): session is SessionState => Boolean(session));
+  }
+
+  function clearSessionQueue(session: SessionState): { messages: number; bytes: number } {
+    const messages = session.queue.length;
+    const bytes = session.queueBytes;
+    if (messages === 0 && bytes === 0) {
+      queuedSessionIds.delete(session.sessionId);
+      return { messages: 0, bytes: 0 };
+    }
+
+    session.queue.length = 0;
+    session.queueBytes = 0;
+    queuedSessionIds.delete(session.sessionId);
+    return { messages, bytes };
   }
 
   function detachSessionFromIndexes(session: SessionState): void {
@@ -1917,6 +2295,61 @@ export async function createHubRuntime(config: HubConfig): Promise<HubRuntime> {
     }
 
     return false;
+  }
+
+  function controlBlockForEnvelope(envelope: HubEnvelope): ControlBlock | null {
+    const sourceService = envelope.source.serviceName;
+    if (sourceService && sourceService !== "hub" && controlState.mutedServices.has(sourceService)) {
+      return {
+        code: "MUTED_SERVICE",
+        message: `Service ${sourceService} is muted`,
+        details: { serviceName: sourceService, direction: "source" }
+      };
+    }
+
+    if (envelope.target !== "*" && envelope.target.serviceName && controlState.mutedServices.has(envelope.target.serviceName)) {
+      return {
+        code: "MUTED_SERVICE",
+        message: `Service ${envelope.target.serviceName} is muted`,
+        details: { serviceName: envelope.target.serviceName, direction: "target" }
+      };
+    }
+
+    const mutedPattern = findMutedTopicPattern(envelope.name);
+    if (mutedPattern) {
+      return {
+        code: "MUTED_TOPIC",
+        message: `Topic ${envelope.name} is muted`,
+        details: { topic: envelope.name, pattern: mutedPattern }
+      };
+    }
+
+    return null;
+  }
+
+  function findMutedTopicPattern(topicName: string): string | null {
+    for (const pattern of controlState.mutedTopics.values()) {
+      if (pattern.endsWith("*")) {
+        const prefix = pattern.slice(0, -1);
+        if (topicName.startsWith(prefix)) {
+          return pattern;
+        }
+        continue;
+      }
+
+      if (topicName === pattern) {
+        return pattern;
+      }
+    }
+
+    return null;
+  }
+
+  function trackControlDrop(sessionId: string, envelope: HubEnvelope, reason: string): void {
+    metrics.droppedMessages += 1;
+    if (shouldTrackInternalEnvelope(envelope)) {
+      pushInspector("drop", sessionId, envelope, reason);
+    }
   }
 
   function shouldTrackInternalEnvelope(envelope: HubEnvelope): boolean {
