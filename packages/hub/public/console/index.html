@@ -23,6 +23,7 @@
 
     <nav class="tabs">
       <button data-tab="dashboard" class="active">Dashboard</button>
+      <button data-tab="diagnostics-tab">Diagnostics</button>
       <button data-tab="services">Services</button>
       <button data-tab="clients">Clients</button>
       <button data-tab="inspector">Inspector</button>
@@ -37,6 +38,13 @@
         <div class="grid two" id="health-grid"></div>
         <h3>Metrics</h3>
         <pre id="metrics"></pre>
+        <h3>Diagnostics</h3>
+        <pre id="diagnostics"></pre>
+      </section>
+
+      <section id="diagnostics-tab" class="panel">
+        <h2>Diagnostics</h2>
+        <pre id="diagnostics-full"></pre>
       </section>
 
       <section id="services" class="panel">
@@ -100,6 +108,8 @@
       const statusBanner = document.getElementById("status-banner");
       const healthGrid = document.getElementById("health-grid");
       const metricsOutput = document.getElementById("metrics");
+      const diagnosticsOutput = document.getElementById("diagnostics");
+      const diagnosticsFullOutput = document.getElementById("diagnostics-full");
       const servicesBody = document.getElementById("services-body");
       const clientsBody = document.getElementById("clients-body");
       const inspectorLog = document.getElementById("inspector-log");
@@ -246,12 +256,16 @@
       function applyDashboardSnapshot(payload) {
         const health = payload && typeof payload.health === "object" ? payload.health : null;
         const metrics = payload && typeof payload.metrics === "object" ? payload.metrics : null;
+        const diagnostics = payload && typeof payload.diagnostics === "object" ? payload.diagnostics : null;
         const services = Array.isArray(payload?.services) ? payload.services : null;
         const clients = Array.isArray(payload?.clients) ? payload.clients : null;
 
         if (health && metrics) {
           renderHealth(health, metrics);
           metricsOutput.textContent = JSON.stringify(metrics, null, 2);
+        }
+        if (diagnostics) {
+          renderDiagnostics(diagnostics);
         }
         if (services) {
           renderServices({ services });
@@ -310,12 +324,13 @@
 
       async function refreshAll() {
         try {
-          const [health, services, clients, messages, metrics, config] = await Promise.all([
+          const [health, services, clients, messages, metrics, diagnostics, config] = await Promise.all([
             api("/api/health"),
             api("/api/services"),
             api("/api/clients"),
             api("/api/messages"),
             api("/api/metrics"),
+            api("/api/diagnostics"),
             api("/api/config")
           ]);
 
@@ -328,6 +343,7 @@
           renderInspector();
 
           metricsOutput.textContent = JSON.stringify(metrics, null, 2);
+          renderDiagnostics(diagnostics);
           configOutput.textContent = JSON.stringify(config, null, 2);
 
           await refreshState();
@@ -348,6 +364,20 @@
           resetWsConnection();
           inspectorLog.textContent = String(error);
         }
+      }
+
+      function renderDiagnostics(diagnostics) {
+        const compact = {
+          ts: diagnostics?.ts,
+          uptimeSec: diagnostics?.uptimeSec,
+          routing: diagnostics?.routing,
+          sessions: diagnostics?.sessions,
+          queues: diagnostics?.queues,
+          inspector: diagnostics?.inspector
+        };
+
+        diagnosticsOutput.textContent = JSON.stringify(compact, null, 2);
+        diagnosticsFullOutput.textContent = JSON.stringify(diagnostics, null, 2);
       }
 
       function connectWs() {

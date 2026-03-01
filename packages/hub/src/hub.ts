@@ -393,46 +393,7 @@ export async function createHubRuntime(config: HubConfig): Promise<HubRuntime> {
       preHandler: [authorizeHttp]
     },
     async () => {
-      const queueDepths = Array.from(sessions.values()).map((session) => session.queue.length);
-      const totalQueuedMessages = queueDepths.reduce((sum, value) => sum + value, 0);
-      const maxQueuedMessages = queueDepths.length ? Math.max(...queueDepths) : 0;
-      const totalQueuedBytes = Array.from(sessions.values()).reduce((sum, session) => sum + session.queueBytes, 0);
-      const totalSubscriptions = Array.from(sessions.values()).reduce((sum, session) => sum + session.subscriptions.size, 0);
-      const totalWatches = Array.from(sessions.values()).reduce((sum, session) => sum + session.stateWatches.size, 0);
-
-      return {
-        ts: nowEpochMs(),
-        uptimeSec: Math.round(process.uptime()),
-        routing: {
-          pendingWsRpc: pendingRpc.size,
-          pendingHttpRpc: pendingHttpRpc.size,
-          activeProviders: providerSessionIds.size
-        },
-        sessions: {
-          total: sessions.size,
-          byClient: sessionIdsByClient.size,
-          subscriptions: totalSubscriptions,
-          stateWatches: totalWatches
-        },
-        queues: {
-          totalMessages: totalQueuedMessages,
-          totalBytes: totalQueuedBytes,
-          maxMessagesInSession: maxQueuedMessages
-        },
-        inspector: {
-          bufferedMessages: inspector.length
-        },
-        config: {
-          domain: config.domain,
-          listen: config.listen,
-          limits: config.limits,
-          validation: config.validation,
-          security: {
-            tokenConfigured: Boolean(config.security.token),
-            allowlistSubnets: config.security.allowlistSubnets
-          }
-        }
-      };
+      return diagnosticsSnapshot();
     }
   );
 
@@ -802,6 +763,7 @@ export async function createHubRuntime(config: HubConfig): Promise<HubRuntime> {
         services: providerSessionIds.size
       },
       metrics: metricsSnapshot(),
+      diagnostics: diagnosticsSnapshot(),
       services: Array.from(presenceByServiceInstance.values())
         .sort((a, b) => a.serviceName.localeCompare(b.serviceName) || a.instanceId.localeCompare(b.instanceId))
         .map((record) => ({
@@ -820,6 +782,83 @@ export async function createHubRuntime(config: HubConfig): Promise<HubRuntime> {
         consumes: session.consumes,
         tags: session.tags
       }))
+    };
+  }
+
+  function diagnosticsSnapshot(): {
+    ts: number;
+    uptimeSec: number;
+    routing: {
+      pendingWsRpc: number;
+      pendingHttpRpc: number;
+      activeProviders: number;
+    };
+    sessions: {
+      total: number;
+      byClient: number;
+      subscriptions: number;
+      stateWatches: number;
+    };
+    queues: {
+      totalMessages: number;
+      totalBytes: number;
+      maxMessagesInSession: number;
+      queuedSessions: number;
+    };
+    inspector: {
+      bufferedMessages: number;
+    };
+    config: {
+      domain: string;
+      listen: HubConfig["listen"];
+      limits: HubConfig["limits"];
+      validation: HubConfig["validation"];
+      security: {
+        tokenConfigured: boolean;
+        allowlistSubnets: string[];
+      };
+    };
+  } {
+    const queueDepths = Array.from(sessions.values()).map((session) => session.queue.length);
+    const totalQueuedMessages = queueDepths.reduce((sum, value) => sum + value, 0);
+    const maxQueuedMessages = queueDepths.length ? Math.max(...queueDepths) : 0;
+    const totalQueuedBytes = Array.from(sessions.values()).reduce((sum, session) => sum + session.queueBytes, 0);
+    const totalSubscriptions = Array.from(sessions.values()).reduce((sum, session) => sum + session.subscriptions.size, 0);
+    const totalWatches = Array.from(sessions.values()).reduce((sum, session) => sum + session.stateWatches.size, 0);
+
+    return {
+      ts: nowEpochMs(),
+      uptimeSec: Math.round(process.uptime()),
+      routing: {
+        pendingWsRpc: pendingRpc.size,
+        pendingHttpRpc: pendingHttpRpc.size,
+        activeProviders: providerSessionIds.size
+      },
+      sessions: {
+        total: sessions.size,
+        byClient: sessionIdsByClient.size,
+        subscriptions: totalSubscriptions,
+        stateWatches: totalWatches
+      },
+      queues: {
+        totalMessages: totalQueuedMessages,
+        totalBytes: totalQueuedBytes,
+        maxMessagesInSession: maxQueuedMessages,
+        queuedSessions: queuedSessionIds.size
+      },
+      inspector: {
+        bufferedMessages: inspector.length
+      },
+      config: {
+        domain: config.domain,
+        listen: config.listen,
+        limits: config.limits,
+        validation: config.validation,
+        security: {
+          tokenConfigured: Boolean(config.security.token),
+          allowlistSubnets: config.security.allowlistSubnets
+        }
+      }
     };
   }
 
