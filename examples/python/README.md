@@ -68,6 +68,19 @@ HUB_TOKEN=CHANGE_ME_SUPERHUB_TOKEN python examples/python/http_api_demo.py
 - `HUB_WS_URL` (optional; auto-derived from `HUB_HTTP_URL`)
 - `HUB_TOKEN` (optional if hub has no token)
 - `CLIENT_ID` (optional; auto-generated if missing)
+- `ISS_SEND_HZ` (for `iss_updater.py`, default `1`, clamped to `1..50`)
+
+## ISS updater rate
+
+`iss_updater.py` send rate is adjustable from `1` to `50` Hz:
+
+```bash
+# via env
+ISS_SEND_HZ=20 HUB_TOKEN=CHANGE_ME_SUPERHUB_TOKEN python examples/python/iss_updater.py
+
+# via CLI (priority over env)
+HUB_TOKEN=CHANGE_ME_SUPERHUB_TOKEN python examples/python/iss_updater.py --hz 50
+```
 
 ## Notes
 

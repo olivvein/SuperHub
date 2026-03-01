@@ -1,9 +1,11 @@
 # iss_updater.py
 from __future__ import annotations
 
+import argparse
 import asyncio
 import math
 import os
+import sys
 import time
 import urllib.request
 from dataclasses import dataclass
@@ -24,6 +26,9 @@ from hub_protocol import (
 )
 
 CELESTRAK_STATIONS_URL = "http://www.celestrak.com/NORAD/elements/stations.txt"
+DEFAULT_SEND_HZ = 1.0
+MIN_SEND_HZ = 1.0
+MAX_SEND_HZ = 50.0
 
 
 def _fetch_text(url: str, timeout: float = 10.0) -> str:
@@ -129,9 +134,27 @@ def iss_position_now(sat: Satrec) -> Tuple[float, float, float]:
     return (lat, lon, alt_km)
 
 
-async def run() -> None:
+def resolve_send_hz(cli_hz: Optional[float]) -> float:
+    raw = cli_hz if cli_hz is not None else os.getenv("ISS_SEND_HZ", str(DEFAULT_SEND_HZ))
+    try:
+        hz = float(raw)
+    except (TypeError, ValueError):
+        print(f"Invalid ISS send rate '{raw}', fallback to {DEFAULT_SEND_HZ} Hz")
+        return DEFAULT_SEND_HZ
+
+    if hz < MIN_SEND_HZ:
+        print(f"ISS send rate {hz} Hz is below {MIN_SEND_HZ} Hz, clamped.")
+        return MIN_SEND_HZ
+    if hz > MAX_SEND_HZ:
+        print(f"ISS send rate {hz} Hz is above {MAX_SEND_HZ} Hz, clamped.")
+        return MAX_SEND_HZ
+    return hz
+
+
+async def run(send_hz: float) -> None:
     token = os.getenv("HUB_TOKEN")
     client_id = os.getenv("CLIENT_ID") or f"py-iss-updater-{now_ms()}"
+    send_interval_s = 1.0 / send_hz
 
     http_url = default_http_url()
     ws_url = ws_url_with_token(default_ws_url(http_url), token)
@@ -143,6 +166,7 @@ async def run() -> None:
 
     async with websockets.connect(ws_url, ping_interval=20, ping_timeout=20, max_size=1024 * 1024) as ws:
         print(f"iss-updater connected ({client_id}) -> {ws_url}")
+        print(f"ISS update rate: {send_hz:.3f} Hz ({send_interval_s * 1000.0:.1f} ms)")
 
         await send_json(
             ws,
@@ -196,6 +220,7 @@ async def run() -> None:
         reader_task = asyncio.create_task(reader())
 
         try:
+            next_tick = time.monotonic()
             while True:
                 await ensure_tle()
                 assert sat is not None
@@ -203,6 +228,7 @@ async def run() -> None:
                 try:
                     lat, lon, alt_km = iss_position_now(sat)
                     payload = {"lat": lat, "lon": lon, "altKm": alt_km, "at": now_ms()}
+                    print(f"ISS position: {lat:.4f}, {lon:.4f}, {alt_km:.2f} km")
 
                     await send_json(
                         ws,
@@ -230,14 +256,30 @@ async def run() -> None:
                 except Exception as e:
                     print("update error:", e)
 
-                await asyncio.sleep(1.0)
+                next_tick += send_interval_s
+                sleep_for = next_tick - time.monotonic()
+                if sleep_for > 0:
+                    await asyncio.sleep(sleep_for)
+                else:
+                    # We are behind schedule, reset anchor to avoid drift accumulation.
+                    next_tick = time.monotonic()
         finally:
             reader_task.cancel()
 
 
 def main() -> None:
+    parser = argparse.ArgumentParser(description="ISS realtime updater for SuperHub")
+    parser.add_argument(
+        "--hz",
+        type=float,
+        default=None,
+        help=f"Send rate in Hz ({MIN_SEND_HZ}-{MAX_SEND_HZ}). Overrides ISS_SEND_HZ.",
+    )
+    args = parser.parse_args(sys.argv[1:])
+    send_hz = resolve_send_hz(args.hz)
+
     try:
-        asyncio.run(run())
+        asyncio.run(run(send_hz))
     except KeyboardInterrupt:
         print("iss-updater stopped")
 

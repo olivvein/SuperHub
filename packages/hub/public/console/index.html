@@ -112,13 +112,36 @@
       const tabs = Array.from(document.querySelectorAll(".tabs button[data-tab]"));
       const panels = Array.from(document.querySelectorAll(".panel"));
 
+      const HUB_PROTOCOL_VERSION = 1;
+      const WS_RECONNECT_MS = 1500;
+      const DASHBOARD_REFRESH_MS = 1000;
+      const STATE_WATCH_ID = "console-state-watch";
+      const CONSOLE_CLIENT_ID_KEY = "superhub.console.clientId";
+
+      let ws = null;
+      let wsReconnectTimer = null;
+      let wsToken = null;
+      let wsWatchPrefix = null;
+
       let inspectorMessages = [];
+      let stateEntriesByPath = new Map();
 
       const savedToken = localStorage.getItem("superhub.token") || "";
       tokenInput.value = savedToken;
 
+      const consoleClientId = (() => {
+        const existing = localStorage.getItem(CONSOLE_CLIENT_ID_KEY);
+        if (existing) {
+          return existing;
+        }
+        const generated = randomId();
+        localStorage.setItem(CONSOLE_CLIENT_ID_KEY, generated);
+        return generated;
+      })();
+
       saveTokenButton.addEventListener("click", () => {
         localStorage.setItem("superhub.token", tokenInput.value.trim());
+        resetWsConnection();
         void refreshAll();
       });
 
@@ -139,6 +162,10 @@
 
       reloadStateButton.addEventListener("click", () => {
         void refreshState();
+      });
+
+      statePrefixInput.addEventListener("change", () => {
+        updateWsWatch();
       });
 
       inspectorFilter.addEventListener("input", () => {
@@ -236,10 +263,29 @@
 
         try {
           const state = await api(`/api/state${query}`);
-          stateOutput.textContent = JSON.stringify(state, null, 2);
+          if (Array.isArray(state.entries)) {
+            stateEntriesByPath = new Map(
+              state.entries
+                .filter((entry) => entry && typeof entry.path === "string")
+                .map((entry) => [entry.path, entry.value])
+            );
+            renderStateEntries();
+          } else {
+            stateOutput.textContent = JSON.stringify(state, null, 2);
+          }
+
+          updateWsWatch();
         } catch (error) {
           stateOutput.textContent = String(error);
         }
+      }
+
+      function renderStateEntries() {
+        const entries = Array.from(stateEntriesByPath.entries())
+          .sort(([a], [b]) => a.localeCompare(b))
+          .map(([path, value]) => ({ path, value }));
+
+        stateOutput.textContent = JSON.stringify({ entries }, null, 2);
       }
 
       async function refreshAll() {
@@ -265,6 +311,7 @@
           configOutput.textContent = JSON.stringify(config, null, 2);
 
           await refreshState();
+          connectWs();
         } catch (error) {
           const statusCode = Number(error.statusCode || 0);
           if (statusCode === 401) {
@@ -279,8 +326,197 @@
             setStatus("Impossible de charger la console. Verifie que le hub est en ligne.", "warn");
           }
 
+          resetWsConnection();
           inspectorLog.textContent = String(error);
         }
+      }
+
+      function connectWs() {
+        const token = tokenInput.value.trim();
+
+        if (ws && ws.readyState === WebSocket.OPEN && wsToken === token) {
+          updateWsWatch();
+          return;
+        }
+
+        if (ws && ws.readyState === WebSocket.CONNECTING && wsToken === token) {
+          return;
+        }
+
+        if (ws) {
+          try {
+            ws.close();
+          } catch {
+            // ignore
+          }
+          ws = null;
+        }
+
+        const protocol = window.location.protocol === "https:" ? "wss" : "ws";
+        const url = new URL(`${protocol}://${window.location.host}/ws`);
+        if (token) {
+          url.searchParams.set("token", token);
+        }
+
+        wsToken = token;
+        wsWatchPrefix = null;
+        ws = new WebSocket(url.toString());
+
+        ws.onopen = () => {
+          sendPresence();
+          updateWsWatch();
+        };
+
+        ws.onmessage = (event) => {
+          handleWsMessage(event.data);
+        };
+
+        ws.onclose = () => {
+          ws = null;
+          wsWatchPrefix = null;
+          if (wsReconnectTimer) {
+            clearTimeout(wsReconnectTimer);
+          }
+          wsReconnectTimer = setTimeout(() => {
+            connectWs();
+          }, WS_RECONNECT_MS);
+        };
+      }
+
+      function resetWsConnection() {
+        if (wsReconnectTimer) {
+          clearTimeout(wsReconnectTimer);
+          wsReconnectTimer = null;
+        }
+        wsWatchPrefix = null;
+        wsToken = null;
+
+        if (ws) {
+          try {
+            ws.close();
+          } catch {
+            // ignore
+          }
+          ws = null;
+        }
+      }
+
+      function sendPresence() {
+        sendWsEnvelope({
+          type: "presence",
+          name: "presence",
+          target: { serviceName: "hub" },
+          payload: {
+            clientId: consoleClientId,
+            serviceName: "console",
+            version: "0.1.0",
+            provides: [],
+            consumes: ["state.*"],
+            tags: ["console"]
+          }
+        });
+      }
+
+      function updateWsWatch() {
+        if (!ws || ws.readyState !== WebSocket.OPEN) {
+          return;
+        }
+
+        const nextPrefix = currentStatePrefix();
+        if (wsWatchPrefix === nextPrefix) {
+          return;
+        }
+
+        if (wsWatchPrefix != null) {
+          sendWsEnvelope({
+            type: "cmd",
+            name: "state_unwatch",
+            target: { serviceName: "hub" },
+            payload: { watchId: STATE_WATCH_ID }
+          });
+        }
+
+        sendWsEnvelope({
+          type: "cmd",
+          name: "state_watch",
+          target: { serviceName: "hub" },
+          payload: { watchId: STATE_WATCH_ID, prefix: nextPrefix }
+        });
+
+        wsWatchPrefix = nextPrefix;
+      }
+
+      function currentStatePrefix() {
+        return statePrefixInput.value.trim() || "state/";
+      }
+
+      function handleWsMessage(rawData) {
+        try {
+          const raw =
+            typeof rawData === "string"
+              ? rawData
+              : rawData instanceof ArrayBuffer
+              ? new TextDecoder().decode(rawData)
+              : "";
+          if (!raw) {
+            return;
+          }
+
+          const message = JSON.parse(raw);
+          if (message.type === "state_patch") {
+            const payload = message.payload || {};
+            const path = typeof payload.path === "string" ? payload.path : null;
+            if (!path) {
+              return;
+            }
+
+            const prefix = currentStatePrefix();
+            if (!path.startsWith(prefix)) {
+              return;
+            }
+
+            stateEntriesByPath.set(path, payload.value);
+            renderStateEntries();
+            return;
+          }
+
+          if (message.type === "error") {
+            const payload = message.payload || {};
+            if (payload.code === "AUTH_REQUIRED") {
+              setStatus("WebSocket refuse: token invalide ou manquant.", "error");
+              return;
+            }
+            if (payload.code === "FORBIDDEN") {
+              setStatus("WebSocket refuse: IP non allowlist.", "error");
+            }
+          }
+        } catch {
+          // ignore malformed ws payload in console
+        }
+      }
+
+      function sendWsEnvelope(input) {
+        if (!ws || ws.readyState !== WebSocket.OPEN) {
+          return;
+        }
+
+        const envelope = {
+          v: HUB_PROTOCOL_VERSION,
+          id: randomId(),
+          type: input.type,
+          name: input.name,
+          source: { clientId: consoleClientId, serviceName: "console" },
+          target: input.target,
+          ts: Date.now(),
+          schemaVersion: input.schemaVersion || 1,
+          payload: input.payload
+        };
+
+        if (input.correlationId) {
+          envelope.correlationId = input.correlationId;
+        }
+
+        ws.send(JSON.stringify(envelope));
       }
 
       function setStatus(message, kind) {
@@ -295,6 +531,13 @@
         statusBanner.classList.remove("error", "warn");
       }
 
+      function randomId() {
+        if (window.crypto && typeof window.crypto.randomUUID === "function") {
+          return window.crypto.randomUUID();
+        }
+        return `id_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+      }
+
       function escapeHtml(value) {
         return String(value)
           .replaceAll("&", "&amp;")
@@ -307,7 +550,7 @@
       void refreshAll();
       setInterval(() => {
         void refreshAll();
-      }, 3000);
+      }, DASHBOARD_REFRESH_MS);
     </script>
   </body>
 </html>
