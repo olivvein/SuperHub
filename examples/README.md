@@ -4,6 +4,7 @@ Ce dossier contient des exemples Node.js/TS et Python pour valider le flux Super
 
 - `music-provider.ts`: service provider `music`
 - `music-controller.ts`: client controller qui appelle une RPC `music.play`
+- `iss-monitor.ts`: client Node/TS qui affiche en temps reel `iss.position`
 - `python/`: memes flux en Python (WS + HTTP), voir `examples/python/README.md`
   - `iss_provider.py`: provider ISS minimal
   - `iss_updater.py`: updater ISS (frequence reglable 1..50 Hz)
@@ -29,6 +30,15 @@ npm run dev
 
 Depuis la racine du repo (`/Users/olivierveinand/Documents/DEV/SuperHub`):
 
+Preparation `.env` examples:
+
+```bash
+cp examples/.env.example examples/.env
+set -a
+source examples/.env
+set +a
+```
+
 Terminal 1 (Hub):
 
 ```bash
@@ -51,6 +61,14 @@ HUB_TLS_CA_FILE="$HOME/Library/Application Support/Caddy/pki/authorities/local/r
 npx tsx examples/music-controller.ts
 ```
 
+Terminal 4 (ISS monitor Node/TS):
+
+```bash
+HUB_TOKEN=CHANGE_ME_SUPERHUB_TOKEN \
+HUB_TLS_CA_FILE="$HOME/Library/Application Support/Caddy/pki/authorities/local/root.crt" \
+npx tsx examples/iss-monitor.ts
+```
+
 ## Ce qui doit se passer
 
 - Le provider loggue sa connexion.
@@ -60,6 +78,14 @@ npx tsx examples/music-controller.ts
 - Le controller recoit une `rpc_res` avec `accepted: true`.
 - Un evenement `music.played` est publie.
 - Le state `state/music/current` est mis a jour.
+
+## Flux ISS en temps reel (Python -> Node/TS)
+
+Dans `examples/python` lance `iss_updater.py`, puis lance `examples/iss-monitor.ts`.
+
+Le monitor Node affiche:
+- les events `iss.position`
+- les updates state `state/iss/position`
 
 ## URL utilisee par les exemples
 

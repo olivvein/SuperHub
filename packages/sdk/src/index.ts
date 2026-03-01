@@ -1,14 +1,51 @@
 import WebSocket from "isomorphic-ws";
-import {
-  HUB_PROTOCOL_VERSION,
-  HubEnvelope,
-  HubMessageType,
-  HubTarget,
-  RpcErrorShape,
-  RpcResponsePayload,
-  SubscribePayload,
-  normalizeRpcError
-} from "@superhub/contracts";
+
+export const HUB_PROTOCOL_VERSION = 1;
+
+export type HubTarget =
+  | "*"
+  | {
+      clientId?: string;
+      serviceName?: string;
+    };
+
+export interface HubEnvelope {
+  v: number;
+  id: string;
+  type: "event" | "cmd" | "rpc_req" | "rpc_res" | "state_patch" | "presence" | "error";
+  name: string;
+  source: {
+    clientId: string;
+    serviceName?: string;
+  };
+  target: HubTarget;
+  ts: number;
+  correlationId?: string;
+  schemaVersion: number;
+  payload: unknown;
+  meta?: {
+    priority?: "low" | "normal" | "high";
+    ttlMs?: number;
+    trace?: Record<string, unknown>;
+  };
+}
+
+export interface RpcErrorShape {
+  code: string;
+  message: string;
+  details?: unknown;
+}
+
+export interface RpcResponsePayload {
+  ok: boolean;
+  result?: unknown;
+  error?: RpcErrorShape;
+}
+
+export interface SubscribePayload {
+  names?: string[];
+  namePrefix?: string;
+}
 
 export interface HubClientOptions {
   httpUrl: string;
@@ -576,6 +613,24 @@ function matchesFilter(message: HubEnvelope, filter: SubscribePayload): boolean 
   }
 
   return false;
+}
+
+function normalizeRpcError(error: unknown): RpcErrorShape {
+  if (error && typeof error === "object") {
+    const candidate = error as { code?: unknown; message?: unknown; details?: unknown };
+    if (typeof candidate.code === "string" && typeof candidate.message === "string") {
+      return {
+        code: candidate.code,
+        message: candidate.message,
+        details: candidate.details
+      };
+    }
+  }
+
+  return {
+    code: "INTERNAL_ERROR",
+    message: error instanceof Error ? error.message : "Unknown error"
+  };
 }
 
 function randomId(): string {

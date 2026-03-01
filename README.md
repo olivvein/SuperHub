@@ -8,6 +8,7 @@ Hub local HTTPS/WSS pour projets perso (Mac mini, Node.js/TypeScript).
 - Runbook ops (TLS local, trust iOS/macOS, supervision): `docs/OPS_RUNBOOK.md`
 - Guide dev exemples music: `examples/README.md`
 - Guide dev exemples Python: `examples/python/README.md`
+- Guide clients (Node/TS, Python, React): `client/README.md`
 
 ## Ce qui est inclus
 
@@ -36,6 +37,7 @@ Hub local HTTPS/WSS pour projets perso (Mac mini, Node.js/TypeScript).
 - `/packages/sdk`
 - `/packages/hub`
 - `/examples`
+- `/client`
 - `/deploy/Caddyfile`
 - `/hub.config.ts`
 
@@ -134,6 +136,12 @@ Diagnostics runtime:
 
 ```bash
 HUB_TOKEN=... npm run diag
+```
+
+Distribution clients LAN (sans npm/pip publish):
+
+```bash
+npm run client:dist
 ```
 
 ## Notes V1

@@ -30,6 +30,21 @@ def default_ws_url(http_url: str) -> str:
     return http_url.replace("https://", "wss://").replace("http://", "ws://").rstrip("/") + "/ws"
 
 
+def ws_url_with_token(ws_url: str, token: str | None) -> str:
+    if not token:
+        return ws_url
+
+    parsed = urllib.parse.urlparse(ws_url)
+    params = [
+        (key, value)
+        for key, value in urllib.parse.parse_qsl(parsed.query, keep_blank_values=True)
+        if key != "token"
+    ]
+    params.append(("token", token))
+    query = urllib.parse.urlencode(params)
+    return urllib.parse.urlunparse(parsed._replace(query=query))
+
+
 def tls_context_for_url(url: str) -> ssl.SSLContext | None:
     normalized = url.lower()
     if not (normalized.startswith("https://") or normalized.startswith("wss://")):
@@ -63,17 +78,6 @@ def _resolve_ca_file(raw: str | None) -> str | None:
     )
 
 
-def ws_url_with_token(ws_url: str, token: str | None) -> str:
-    if not token:
-        return ws_url
-
-    parsed = urllib.parse.urlparse(ws_url)
-    params = [(key, value) for key, value in urllib.parse.parse_qsl(parsed.query, keep_blank_values=True) if key != "token"]
-    params.append(("token", token))
-    query = urllib.parse.urlencode(params)
-    return urllib.parse.urlunparse(parsed._replace(query=query))
-
-
 def make_envelope(
     *,
     msg_type: str,
@@ -84,7 +88,7 @@ def make_envelope(
     schema_version: int = 1,
     correlation_id: str | None = None,
 ) -> dict[str, Any]:
-    message = {
+    message: dict[str, Any] = {
         "v": HUB_PROTOCOL_VERSION,
         "id": new_id(),
         "type": msg_type,
@@ -130,12 +134,12 @@ def make_presence_envelope(
     )
 
 
-async def send_json(ws: Any, message: dict[str, Any]) -> None:
-    await ws.send(json.dumps(message))
-
-
 def decode_json(raw: str) -> dict[str, Any]:
     parsed = json.loads(raw)
     if not isinstance(parsed, dict):
         raise ValueError("Expected object JSON message")
     return parsed
+
+
+def encode_json(payload: dict[str, Any]) -> str:
+    return json.dumps(payload)

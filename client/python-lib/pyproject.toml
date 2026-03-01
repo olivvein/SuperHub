@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "superhub-client"
+version = "0.1.0"
+description = "SuperHub Python client (LAN/local distribution)"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+  "websockets>=12,<16"
+]
+optional-dependencies = { examples = ["sgp4>=2.24"] }
+authors = [
+  { name = "SuperHub" }
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["superhub_client*"]
