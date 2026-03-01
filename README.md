@@ -5,6 +5,7 @@ Hub local HTTPS/WSS pour projets perso (Mac mini, Node.js/TypeScript).
 ## Documentation de suivi
 
 - Statut implementation + reste a faire: `docs/IMPLEMENTATION_STATUS.md`
+- Worklog complet des evolutions: `docs/WORKLOG_2026-03-01.md`
 - Runbook ops (TLS local, trust iOS/macOS, supervision): `docs/OPS_RUNBOOK.md`
 - Guide dev exemples music: `examples/README.md`
 - Guide dev exemples Python: `examples/python/README.md`
@@ -90,8 +91,15 @@ Procedure complete detaillee: `docs/OPS_RUNBOOK.md`.
 - `GET /api/config`
 - `GET /api/metrics`
 - `GET /api/diagnostics`
+- `GET /api/control`
 - `POST /api/publish`
 - `POST /api/rpc`
+- `POST /api/control/disconnect`
+- `POST /api/control/mute`
+- `POST /api/control/unmute`
+- `POST /api/control/inbound`
+- `POST /api/control/state-broadcast`
+- `POST /api/control/clear-queues`
 
 `X-Hub-Token` requis si `security.token` est configuré (sauf `/api/health`).
 
