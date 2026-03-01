@@ -16,14 +16,26 @@ const client = new HubClient({
 client.onOpen(() => {
   console.log("music-provider connected");
 
-  client.subscribe({ names: ["music.play"] }, async (message) => {
-    console.log("music.play command received", message.payload);
+  client.onRpc("music.play", async (args) => {
+    const input = args as { trackId?: string; positionMs?: number } | undefined;
+    const trackId = input?.trackId ?? "unknown-track";
+    const positionMs = input?.positionMs ?? 0;
 
-    if (!message.correlationId) {
-      return;
-    }
+    console.log("rpc music.play", { trackId, positionMs });
 
-    client.publish("music.played", { ok: true, at: Date.now() }, message.source.clientId ? { clientId: message.source.clientId } : "*");
+    client.setState("state/music/current", {
+      trackId,
+      positionMs,
+      startedAt: Date.now()
+    });
+
+    client.publish("music.played", { trackId, at: Date.now() }, "*");
+
+    return {
+      accepted: true,
+      trackId,
+      positionMs
+    };
   });
 });
 

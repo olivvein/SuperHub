@@ -97,6 +97,8 @@ Ce document resume ce qui a ete implemente dans le repo, les problemes rencontre
 
 - `npm run typecheck`: OK
 - `npm run build`: OK
+- `npm test`: socle de tests ajoute (unit + integration).\
+  Note: les tests integration WS ouvrent un port local et peuvent echouer en environnement sandbox restreint.
 - Tests manuels confirmes:
   - exemples `music-provider` / `music-controller` fonctionnels
   - console accessible et chargee en local
@@ -118,9 +120,9 @@ Notation:
 
 ### 4.2 V1
 
-- RPC: `PARTIAL`
+- RPC: `DONE`
   - Hub route `rpc_req/rpc_res` et endpoint HTTP RPC OK.
-  - Gap SDK: pas encore d'API ergonomique cote provider pour consommer `rpc_req` et renvoyer `rpc_res`.
+  - SDK provider complete avec `onRpc(method, handler)` + reponse `rpc_res` automatique.
 - State + watch (patch): `DONE`
 - Token + pairing page: `PARTIAL`
   - page pairing existante, QR code reel non implemente.
@@ -137,15 +139,15 @@ Notation:
 
 ### P0 - a faire en premier
 
-1. Completer le flux RPC cote SDK provider
-- Ajouter API SDK pour gerer `rpc_req` (handler methodes) et envoyer `rpc_res` simplement.
-- Ajouter exemple `music` base sur vraie RPC bidirectionnelle (pas seulement event/cmd).
+1. Completer le flux RPC cote SDK provider: `DONE`
+- API SDK ajoutee pour gerer `rpc_req` et renvoyer `rpc_res` simplement (`onRpc`).
+- Exemples `music` migrés vers une vraie RPC bidirectionnelle.
 
-2. Ajouter tests automatiques
+2. Ajouter tests automatiques: `DONE`
 - Tests unitaires: validation contrats, router, state store, allowlist, backpressure.
 - Tests integration: WS multi-clients, reconnect, rpc timeout, state watch.
 
-3. Durcir l'observabilite runtime
+3. Durcir l'observabilite runtime: `DONE`
 - Endpoint/commande de diagnostic rapide (version config effective + etat routing).
 - Logs d'erreurs structurees pour toutes branches critiques.
 

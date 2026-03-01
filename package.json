@@ -8,7 +8,9 @@
   "scripts": {
     "build": "npm run --workspace @superhub/contracts build && npm run --workspace @superhub/sdk build && npm run --workspace @superhub/hub build",
     "dev": "npm run --workspace @superhub/hub dev",
-    "typecheck": "npm run --workspace @superhub/contracts build && npm run --workspace @superhub/contracts typecheck && npm run --workspace @superhub/sdk typecheck && npm run --workspace @superhub/hub typecheck"
+    "typecheck": "npm run --workspace @superhub/contracts build && npm run --workspace @superhub/contracts typecheck && npm run --workspace @superhub/sdk typecheck && npm run --workspace @superhub/hub typecheck",
+    "test": "npm run build && node --test $(find tests -type f -name '*.test.mjs' | sort)",
+    "diag": "node scripts/diagnostics.mjs"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.13",

@@ -24,11 +24,12 @@ import {
   hubError,
   nowEpochMs
 } from "@superhub/contracts";
+import { applyBackpressure } from "./backpressure.js";
 import { HubConfig } from "./config.js";
 import { HubLogger } from "./logger.js";
+import { isIpAllowlisted } from "./network.js";
 import { HubPersistence } from "./persistence.js";
 import { StateStore } from "./state-store.js";
-import ipaddr from "ipaddr.js";
 
 type Direction = "in" | "out" | "drop";
 
@@ -386,6 +387,55 @@ export async function createHubRuntime(config: HubConfig): Promise<HubRuntime> {
   );
 
   app.get(
+    "/api/diagnostics",
+    {
+      preHandler: [authorizeHttp]
+    },
+    async () => {
+      const queueDepths = Array.from(sessions.values()).map((session) => session.queue.length);
+      const totalQueuedMessages = queueDepths.reduce((sum, value) => sum + value, 0);
+      const maxQueuedMessages = queueDepths.length ? Math.max(...queueDepths) : 0;
+      const totalQueuedBytes = Array.from(sessions.values()).reduce((sum, session) => sum + session.queueBytes, 0);
+      const totalSubscriptions = Array.from(sessions.values()).reduce((sum, session) => sum + session.subscriptions.size, 0);
+      const totalWatches = Array.from(sessions.values()).reduce((sum, session) => sum + session.stateWatches.size, 0);
+
+      return {
+        ts: nowEpochMs(),
+        uptimeSec: Math.round(process.uptime()),
+        routing: {
+          pendingWsRpc: pendingRpc.size,
+          pendingHttpRpc: pendingHttpRpc.size,
+          activeProviders: providerSessionIds.size
+        },
+        sessions: {
+          total: sessions.size,
+          byClient: sessionIdsByClient.size,
+          subscriptions: totalSubscriptions,
+          stateWatches: totalWatches
+        },
+        queues: {
+          totalMessages: totalQueuedMessages,
+          totalBytes: totalQueuedBytes,
+          maxMessagesInSession: maxQueuedMessages
+        },
+        inspector: {
+          bufferedMessages: inspector.length
+        },
+        config: {
+          domain: config.domain,
+          listen: config.listen,
+          limits: config.limits,
+          validation: config.validation,
+          security: {
+            tokenConfigured: Boolean(config.security.token),
+            allowlistSubnets: config.security.allowlistSubnets
+          }
+        }
+      };
+    }
+  );
+
+  app.get(
     "/api/state",
     {
       preHandler: [authorizeHttp]
@@ -663,12 +713,23 @@ export async function createHubRuntime(config: HubConfig): Promise<HubRuntime> {
 
   function authorizeHttp(request: FastifyRequest, reply: FastifyReply, done: (error?: Error) => void): void {
     if (!isIpAllowlisted(request.ip, config.security.allowlistSubnets)) {
+      logger.warn("http.forbidden.ip", {
+        method: request.method,
+        url: request.url,
+        ip: request.ip
+      });
       reply.code(403).send({ error: hubError("FORBIDDEN", "IP is not allowlisted") });
       return done(new Error("forbidden"));
     }
 
     const result = authorizeTokenForRequest(request);
     if (!result.ok) {
+      logger.warn("http.unauthorized", {
+        method: request.method,
+        url: request.url,
+        ip: request.ip,
+        reason: result.reason
+      });
       reply.code(401).send({ error: hubError("AUTH_REQUIRED", result.reason) });
       return done(new Error("unauthorized"));
     }
@@ -696,12 +757,23 @@ export async function createHubRuntime(config: HubConfig): Promise<HubRuntime> {
 
   function handleSocketMessage(session: SessionState, raw: string): void {
     if (!incrementSessionRate(session)) {
+      logger.warn("ws.rate_limit", {
+        sessionId: session.sessionId,
+        clientId: session.clientId,
+        ip: session.ip
+      });
       const response = errorEnvelope("RATE_LIMIT", "Rate limit exceeded", session.clientId, { clientId: session.clientId });
       enqueueForSession(session, response, true);
       return;
     }
 
     if (raw.length > config.limits.maxMessageSizeBytes) {
+      logger.warn("ws.message_too_large", {
+        sessionId: session.sessionId,
+        clientId: session.clientId,
+        size: raw.length,
+        max: config.limits.maxMessageSizeBytes
+      });
       const response = errorEnvelope("MESSAGE_TOO_LARGE", "Message exceeds max payload size", session.clientId, {
         clientId: session.clientId
       });
@@ -713,6 +785,10 @@ export async function createHubRuntime(config: HubConfig): Promise<HubRuntime> {
     try {
       parsed = JSON.parse(raw);
     } catch {
+      logger.warn("ws.invalid_json", {
+        sessionId: session.sessionId,
+        clientId: session.clientId
+      });
       const response = errorEnvelope("INVALID_JSON", "Message is not valid JSON", session.clientId, { clientId: session.clientId });
       enqueueForSession(session, response, true);
       return;
@@ -720,6 +796,11 @@ export async function createHubRuntime(config: HubConfig): Promise<HubRuntime> {
 
     const envelopeResult = HubEnvelopeSchema.safeParse(parsed);
     if (!envelopeResult.success) {
+      logger.warn("ws.invalid_envelope", {
+        sessionId: session.sessionId,
+        clientId: session.clientId,
+        issues: envelopeResult.error.issues
+      });
       const response = errorEnvelope("INVALID_ENVELOPE", "Message does not match envelope schema", session.clientId, {
         clientId: session.clientId,
         issues: envelopeResult.error.issues
@@ -739,25 +820,33 @@ export async function createHubRuntime(config: HubConfig): Promise<HubRuntime> {
 
     pushInspector("in", session.sessionId, envelope);
 
-    const contractValidation = contractRegistry.validate(envelope.name, envelope.schemaVersion, envelope.payload);
-    if (!contractValidation.ok) {
-      const details = {
-        name: envelope.name,
-        schemaVersion: envelope.schemaVersion,
-        issues: contractValidation.issues
-      };
+    const contractPayload = payloadForContractValidation(envelope);
+    if (contractPayload.shouldValidate) {
+      const contractValidation = contractRegistry.validate(envelope.name, envelope.schemaVersion, contractPayload.payload);
+      if (!contractValidation.ok) {
+        const details = {
+          name: envelope.name,
+          schemaVersion: envelope.schemaVersion,
+          issues: contractValidation.issues
+        };
 
-      if (config.validation.mode === "reject") {
-        const response = errorEnvelope("PAYLOAD_VALIDATION_FAILED", "Payload validation failed", session.clientId, details, envelope.correlationId);
-        enqueueForSession(session, response, true);
-        return;
+        if (config.validation.mode === "reject") {
+          logger.warn("payload.validation.reject", {
+            sessionId: session.sessionId,
+            clientId: session.clientId,
+            ...details
+          });
+          const response = errorEnvelope("PAYLOAD_VALIDATION_FAILED", "Payload validation failed", session.clientId, details, envelope.correlationId);
+          enqueueForSession(session, response, true);
+          return;
+        }
+
+        logger.warn("payload.validation.warn", {
+          sessionId: session.sessionId,
+          clientId: session.clientId,
+          ...details
+        });
       }
-
-      logger.warn("payload.validation.warn", {
-        sessionId: session.sessionId,
-        clientId: session.clientId,
-        ...details
-      });
     }
 
     routeMessage(session, envelope);
@@ -1007,6 +1096,11 @@ export async function createHubRuntime(config: HubConfig): Promise<HubRuntime> {
   function routeRpcRequest(sourceSession: SessionState | null, envelope: HubEnvelope): void {
     const payload = RpcRequestPayloadSchema.safeParse(envelope.payload);
     if (!payload.success) {
+      logger.warn("rpc.invalid_request", {
+        sessionId: sourceSession?.sessionId,
+        clientId: sourceSession?.clientId,
+        issues: payload.error.issues
+      });
       if (sourceSession) {
         enqueueForSession(
           sourceSession,
@@ -1033,6 +1127,11 @@ export async function createHubRuntime(config: HubConfig): Promise<HubRuntime> {
 
     const targetService = extractServiceTarget(envelope.target);
     if (!targetService) {
+      logger.warn("rpc.target_missing", {
+        sessionId: sourceSession?.sessionId,
+        clientId: sourceSession?.clientId,
+        envelopeId: envelope.id
+      });
       if (sourceSession) {
         enqueueForSession(
           sourceSession,
@@ -1052,6 +1151,12 @@ export async function createHubRuntime(config: HubConfig): Promise<HubRuntime> {
 
     const provider = pickProviderSession(targetService);
     if (!provider) {
+      logger.warn("rpc.service_unavailable", {
+        sessionId: sourceSession?.sessionId,
+        clientId: sourceSession?.clientId,
+        targetService,
+        method
+      });
       if (sourceSession) {
         enqueueForSession(
           sourceSession,
@@ -1078,6 +1183,12 @@ export async function createHubRuntime(config: HubConfig): Promise<HubRuntime> {
     }
 
     if (!envelope.correlationId) {
+      logger.warn("rpc.correlation_missing", {
+        sessionId: sourceSession?.sessionId,
+        clientId: sourceSession?.clientId,
+        targetService,
+        method
+      });
       if (sourceSession) {
         enqueueForSession(
           sourceSession,
@@ -1097,6 +1208,13 @@ export async function createHubRuntime(config: HubConfig): Promise<HubRuntime> {
           error: hubError("RPC_TIMEOUT", `RPC timeout for ${targetService}.${method}`)
         };
 
+        logger.warn("rpc.timeout", {
+          sessionId: sourceSession.sessionId,
+          clientId: sourceSession.clientId,
+          targetService,
+          method,
+          correlationId: envelope.correlationId
+        });
         enqueueForSession(sourceSession, createRpcResponseEnvelope(envelope, timeoutResponse, sourceSession.clientId), true);
       }, payload.data.timeoutMs);
 
@@ -1229,6 +1347,13 @@ export async function createHubRuntime(config: HubConfig): Promise<HubRuntime> {
     const bytes = Buffer.byteLength(raw, "utf8");
     if (bytes > config.limits.maxMessageSizeBytes) {
       metrics.droppedMessages += 1;
+      logger.warn("ws.outbound_too_large", {
+        sessionId: session.sessionId,
+        clientId: session.clientId,
+        bytes,
+        max: config.limits.maxMessageSizeBytes,
+        name: envelope.name
+      });
       pushInspector("drop", session.sessionId, envelope, "message too large outbound");
       return;
     }
@@ -1253,37 +1378,46 @@ export async function createHubRuntime(config: HubConfig): Promise<HubRuntime> {
       critical
     };
 
-    while (
-      session.queue.length >= config.limits.maxSessionBufferMessages ||
-      session.queueBytes + bytes > config.limits.maxSessionBufferedBytes
-    ) {
-      if (session.queue.length === 0) {
-        break;
+    const decision = applyBackpressure(
+      {
+        queue: session.queue,
+        queueBytes: session.queueBytes
+      },
+      item,
+      {
+        maxMessages: config.limits.maxSessionBufferMessages,
+        maxBytes: config.limits.maxSessionBufferedBytes
       }
+    );
 
-      const dropped = session.queue.shift()!;
-      session.queueBytes -= dropped.bytes;
+    for (const dropped of decision.dropped) {
       metrics.droppedMessages += 1;
       pushInspector("drop", session.sessionId, dropped.envelope, "buffer backpressure");
-
-      if (critical) {
-        const criticalError = errorEnvelope(
-          "BACKPRESSURE",
-          "Unable to deliver critical message due to backpressure",
-          session.clientId,
-          { sessionId: session.sessionId }
-        );
-        try {
-          session.socket.send(JSON.stringify(criticalError));
-        } catch {
-          // Ignore final fallback errors.
-        }
-        return;
-      }
     }
 
-    session.queue.push(item);
-    session.queueBytes += bytes;
+    session.queueBytes = decision.queueBytes;
+
+    if (!decision.accepted || decision.rejectedCritical) {
+      logger.warn("ws.backpressure.reject", {
+        sessionId: session.sessionId,
+        clientId: session.clientId,
+        critical,
+        dropped: decision.dropped.length,
+        queueBytes: session.queueBytes
+      });
+      const criticalError = errorEnvelope(
+        "BACKPRESSURE",
+        "Unable to deliver critical message due to backpressure",
+        session.clientId,
+        { sessionId: session.sessionId }
+      );
+      try {
+        session.socket.send(JSON.stringify(criticalError));
+      } catch {
+        // Ignore final fallback errors.
+      }
+      return;
+    }
   }
 
   function flushSessionQueue(session: SessionState): void {
@@ -1299,6 +1433,11 @@ export async function createHubRuntime(config: HubConfig): Promise<HubRuntime> {
         metrics.messagesOut[item.envelope.type] += 1;
         pushInspector("out", session.sessionId, item.envelope);
       } catch {
+        logger.warn("ws.queue_send_failure", {
+          sessionId: session.sessionId,
+          clientId: session.clientId,
+          name: item.envelope.name
+        });
         metrics.droppedMessages += 1;
         pushInspector("drop", session.sessionId, item.envelope, "socket send failure");
       }
@@ -1672,6 +1811,28 @@ function contentTypeForFile(filePath: string): string {
   }
 }
 
+function payloadForContractValidation(envelope: HubEnvelope): { shouldValidate: boolean; payload: unknown } {
+  if (envelope.type === "rpc_req") {
+    const payload = envelope.payload as { args?: unknown } | null;
+    return {
+      shouldValidate: true,
+      payload: payload?.args
+    };
+  }
+
+  if (envelope.type === "rpc_res" || envelope.type === "presence" || envelope.type === "error") {
+    return {
+      shouldValidate: false,
+      payload: envelope.payload
+    };
+  }
+
+  return {
+    shouldValidate: true,
+    payload: envelope.payload
+  };
+}
+
 function minuteWindow(ts: number): number {
   return Math.floor(ts / 60000);
 }
@@ -1687,78 +1848,6 @@ function percentile(sortedValues: number[], percentileValue: number): number {
   );
 
   return sortedValues[index] ?? 0;
-}
-
-function isIpAllowlisted(ip: string, allowlist: string[]): boolean {
-  if (allowlist.length === 0 || allowlist.includes("*")) {
-    return true;
-  }
-
-  const normalizedIp = normalizeClientIp(ip);
-  if (!normalizedIp) {
-    return false;
-  }
-
-  let parsedIp: ReturnType<typeof ipaddr.parse>;
-
-  try {
-    parsedIp = ipaddr.parse(normalizedIp);
-  } catch {
-    return false;
-  }
-
-  for (const entry of allowlist) {
-    const normalizedEntry = entry.replace(/^::ffff:/, "");
-    try {
-      const candidateIp =
-        parsedIp.kind() === "ipv6" &&
-        "isIPv4MappedAddress" in parsedIp &&
-        typeof parsedIp.isIPv4MappedAddress === "function" &&
-        parsedIp.isIPv4MappedAddress()
-          ? parsedIp.toIPv4Address()
-          : parsedIp;
-
-      if (normalizedEntry.includes("/")) {
-        const range = ipaddr.parseCIDR(normalizedEntry);
-        const networkAddress = range[0];
-        const prefix = range[1];
-        if (candidateIp.kind() !== networkAddress.kind()) {
-          continue;
-        }
-        if (candidateIp.match([networkAddress, prefix])) {
-          return true;
-        }
-      } else if (candidateIp.toString() === ipaddr.parse(normalizedEntry).toString()) {
-        return true;
-      }
-    } catch {
-      continue;
-    }
-  }
-
-  return false;
-}
-
-function normalizeClientIp(ip: string): string | null {
-  let value = ip.split(",")[0]?.trim() ?? "";
-  if (!value) {
-    return null;
-  }
-
-  if (value.startsWith("[") && value.includes("]")) {
-    value = value.slice(1, value.indexOf("]"));
-  }
-
-  if (/^\d{1,3}(\.\d{1,3}){3}:\d+$/.test(value)) {
-    value = value.slice(0, value.lastIndexOf(":"));
-  }
-
-  value = value.replace(/^::ffff:/, "");
-  if (value.includes("%")) {
-    value = value.slice(0, value.indexOf("%"));
-  }
-
-  return value || null;
 }
 
 function escapeHtml(input: string): string {

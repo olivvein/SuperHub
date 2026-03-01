@@ -33,6 +33,14 @@ export interface HubClientOptions {
 
 export type EnvelopeHandler = (message: HubEnvelope) => void;
 export type StateWatchHandler = (path: string, value: unknown, source: HubEnvelope["source"]) => void;
+export type RpcRequestHandler = (args: unknown, context: RpcRequestContext) => Promise<unknown> | unknown;
+
+export interface RpcRequestContext {
+  correlationId: string;
+  method: string;
+  source: HubEnvelope["source"];
+  envelope: HubEnvelope;
+}
 
 interface PendingRpc {
   resolve: (value: unknown) => void;
@@ -43,6 +51,11 @@ interface PendingRpc {
 interface InternalSubscription {
   filter: SubscribePayload;
   handler: EnvelopeHandler;
+}
+
+interface InternalStateWatch {
+  prefix: string;
+  handler: StateWatchHandler;
 }
 
 const DEFAULT_RECONNECT = {
@@ -61,7 +74,8 @@ export class HubClient {
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private pendingRpcs = new Map<string, PendingRpc>();
   private subscriptions = new Map<string, InternalSubscription>();
-  private stateWatches = new Map<string, StateWatchHandler>();
+  private stateWatches = new Map<string, InternalStateWatch>();
+  private rpcHandlers = new Map<string, RpcRequestHandler>();
   private openListeners = new Set<() => void>();
   private closeListeners = new Set<() => void>();
   private errorListeners = new Set<(error: unknown) => void>();
@@ -106,6 +120,13 @@ export class HubClient {
   onError(listener: (error: unknown) => void): () => void {
     this.errorListeners.add(listener);
     return () => this.errorListeners.delete(listener);
+  }
+
+  onRpc(methodName: string, handler: RpcRequestHandler): () => void {
+    this.rpcHandlers.set(methodName, handler);
+    return () => {
+      this.rpcHandlers.delete(methodName);
+    };
   }
 
   publish(name: string, payload: unknown, target: HubTarget = "*", schemaVersion = 1): void {
@@ -208,7 +229,7 @@ export class HubClient {
 
   watchState(prefix: string, handler: StateWatchHandler): () => void {
     const watchId = randomId();
-    this.stateWatches.set(watchId, handler);
+    this.stateWatches.set(watchId, { prefix, handler });
 
     this.sendEnvelope({
       type: "cmd",
@@ -251,6 +272,8 @@ export class HubClient {
         clearTimeout(connectTimeout);
         this.reconnectAttempt = 0;
         this.sendPresence();
+        this.replaySubscriptions();
+        this.replayStateWatches();
         for (const listener of this.openListeners) {
           listener();
         }
@@ -384,10 +407,15 @@ export class HubClient {
     if (parsed.type === "state_patch") {
       const payload = parsed.payload as { path?: string; value?: unknown };
       if (typeof payload.path === "string") {
-        for (const handler of this.stateWatches.values()) {
-          handler(payload.path, payload.value, parsed.source);
+        for (const watch of this.stateWatches.values()) {
+          watch.handler(payload.path, payload.value, parsed.source);
         }
       }
+      return;
+    }
+
+    if (parsed.type === "rpc_req") {
+      void this.handleRpcRequest(parsed);
       return;
     }
 
@@ -413,6 +441,97 @@ export class HubClient {
       clearTimeout(pending.timeout);
       pending.reject(error);
       this.pendingRpcs.delete(id);
+    }
+  }
+
+  private async handleRpcRequest(message: HubEnvelope): Promise<void> {
+    const correlationId = message.correlationId;
+    if (!correlationId) {
+      if (this.options.debug) {
+        console.warn("[hub-sdk] rpc_req ignored: missing correlationId", message);
+      }
+      return;
+    }
+
+    const payload = message.payload as { method?: unknown; args?: unknown };
+    const method = typeof payload.method === "string" ? payload.method : message.name;
+    const handler = this.rpcHandlers.get(method);
+
+    if (!handler) {
+      this.sendRpcResponse(message, {
+        ok: false,
+        error: {
+          code: "METHOD_NOT_FOUND",
+          message: `No rpc handler registered for ${method}`
+        }
+      });
+      return;
+    }
+
+    try {
+      const result = await handler(payload.args, {
+        correlationId,
+        method,
+        source: message.source,
+        envelope: message
+      });
+
+      this.sendRpcResponse(message, {
+        ok: true,
+        result
+      });
+    } catch (error) {
+      this.sendRpcResponse(message, {
+        ok: false,
+        error: normalizeRpcError(error)
+      });
+    }
+  }
+
+  private sendRpcResponse(request: HubEnvelope, payload: RpcResponsePayload): void {
+    try {
+      this.sendEnvelope({
+        type: "rpc_res",
+        name: request.name,
+        target: { serviceName: "hub" },
+        correlationId: request.correlationId,
+        payload,
+        schemaVersion: 1
+      });
+    } catch (error) {
+      for (const listener of this.errorListeners) {
+        listener(error);
+      }
+    }
+  }
+
+  private replaySubscriptions(): void {
+    for (const [subscriptionId, subscription] of this.subscriptions.entries()) {
+      this.sendEnvelope({
+        type: "cmd",
+        name: "subscribe",
+        target: { serviceName: "hub" },
+        payload: {
+          subscriptionId,
+          ...subscription.filter
+        },
+        schemaVersion: 1
+      });
+    }
+  }
+
+  private replayStateWatches(): void {
+    for (const [watchId, watch] of this.stateWatches.entries()) {
+      this.sendEnvelope({
+        type: "cmd",
+        name: "state_watch",
+        target: { serviceName: "hub" },
+        payload: {
+          watchId,
+          prefix: watch.prefix
+        },
+        schemaVersion: 1
+      });
     }
   }
 }

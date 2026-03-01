@@ -20,7 +20,7 @@ Hub local HTTPS/WSS pour projets perso (Mac mini, Node.js/TypeScript).
   - persistance SQLite optionnelle
 - `@superhub/sdk`:
   - client TS (Node + web) avec reconnect/backoff
-  - `publish`, `subscribe`, `rpc`, `getState`, `setState`, `patchState`, `watchState`
+  - `publish`, `subscribe`, `rpc`, `onRpc`, `getState`, `setState`, `patchState`, `watchState`
 - `@superhub/contracts`:
   - envelope unique + schémas Zod + validation versionnée
 - `deploy/Caddyfile`:
@@ -79,6 +79,7 @@ npm run dev
 - `GET /api/state?path=...` ou `GET /api/state?prefix=...`
 - `GET /api/config`
 - `GET /api/metrics`
+- `GET /api/diagnostics`
 - `POST /api/publish`
 - `POST /api/rpc`
 
@@ -106,6 +107,24 @@ Lancer via `tsx` (après `npm install`):
 ```bash
 npx tsx examples/music-provider.ts
 npx tsx examples/music-controller.ts
+```
+
+Le flux `music` d'exemple est maintenant base sur une vraie RPC:
+- `music-controller` envoie `rpc(\"music\", \"music.play\", ...)`
+- `music-provider` repond via `onRpc(\"music.play\", handler)`
+
+## Outils ops
+
+Tests:
+
+```bash
+npm test
+```
+
+Diagnostics runtime:
+
+```bash
+HUB_TOKEN=... npm run diag
 ```
 
 ## Notes V1

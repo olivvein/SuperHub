@@ -18,7 +18,13 @@ client.onOpen(async () => {
     console.log("event", message.name, message.payload);
   });
 
-  client.publish("music.play", { trackId: "track-12", positionMs: 0 }, { serviceName: "music" });
+  const rpcResponse = await client.rpc<{ accepted: boolean; trackId: string; positionMs: number }>(
+    "music",
+    "music.play",
+    { trackId: "track-12", positionMs: 0 },
+    5000
+  );
+  console.log("rpc response", rpcResponse);
 
   const stateUnwatch = client.watchState("state/music", (path, value) => {
     console.log("state patch", path, value);
