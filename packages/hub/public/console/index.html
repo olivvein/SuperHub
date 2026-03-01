@@ -36,6 +36,92 @@
       <section id="dashboard" class="panel active">
         <h2>Dashboard</h2>
         <div class="grid two" id="health-grid"></div>
+        <div class="charts-grid">
+          <article class="chart-card">
+            <div class="chart-head">
+              <h4>Clients over time</h4>
+              <span id="chart-clients-stat" class="chart-stat">0</span>
+            </div>
+            <canvas id="chart-clients" class="chart-canvas"></canvas>
+          </article>
+          <article class="chart-card">
+            <div class="chart-head">
+              <h4>Services over time</h4>
+              <span id="chart-services-stat" class="chart-stat">0</span>
+            </div>
+            <canvas id="chart-services" class="chart-canvas"></canvas>
+          </article>
+          <article class="chart-card">
+            <div class="chart-head">
+              <h4>Inbound data/sec</h4>
+              <span id="chart-in-kbps-stat" class="chart-stat">0 KB/s</span>
+            </div>
+            <canvas id="chart-in-kbps" class="chart-canvas"></canvas>
+          </article>
+          <article class="chart-card">
+            <div class="chart-head">
+              <h4>Outbound data/sec</h4>
+              <span id="chart-out-kbps-stat" class="chart-stat">0 KB/s</span>
+            </div>
+            <canvas id="chart-out-kbps" class="chart-canvas"></canvas>
+          </article>
+          <article class="chart-card">
+            <div class="chart-head">
+              <h4>Inbound msg/sec</h4>
+              <span id="chart-in-mps-stat" class="chart-stat">0 msg/s</span>
+            </div>
+            <canvas id="chart-in-mps" class="chart-canvas"></canvas>
+          </article>
+          <article class="chart-card">
+            <div class="chart-head">
+              <h4>Outbound msg/sec</h4>
+              <span id="chart-out-mps-stat" class="chart-stat">0 msg/s</span>
+            </div>
+            <canvas id="chart-out-mps" class="chart-canvas"></canvas>
+          </article>
+          <article class="chart-card">
+            <div class="chart-head">
+              <h4>Inbound data/min</h4>
+              <span id="chart-in-kbpm-stat" class="chart-stat">0 KB/min</span>
+            </div>
+            <canvas id="chart-in-kbpm" class="chart-canvas"></canvas>
+          </article>
+          <article class="chart-card">
+            <div class="chart-head">
+              <h4>Outbound data/min</h4>
+              <span id="chart-out-kbpm-stat" class="chart-stat">0 KB/min</span>
+            </div>
+            <canvas id="chart-out-kbpm" class="chart-canvas"></canvas>
+          </article>
+          <article class="chart-card">
+            <div class="chart-head">
+              <h4>Queue messages</h4>
+              <span id="chart-queue-msg-stat" class="chart-stat">0</span>
+            </div>
+            <canvas id="chart-queue-msg" class="chart-canvas"></canvas>
+          </article>
+          <article class="chart-card">
+            <div class="chart-head">
+              <h4>Queue data</h4>
+              <span id="chart-queue-kb-stat" class="chart-stat">0 KB</span>
+            </div>
+            <canvas id="chart-queue-kb" class="chart-canvas"></canvas>
+          </article>
+          <article class="chart-card">
+            <div class="chart-head">
+              <h4>Dropped msg/sec</h4>
+              <span id="chart-drop-rate-stat" class="chart-stat">0 msg/s</span>
+            </div>
+            <canvas id="chart-drop-rate" class="chart-canvas"></canvas>
+          </article>
+          <article class="chart-card">
+            <div class="chart-head">
+              <h4>RPC p95 latency</h4>
+              <span id="chart-rpc-p95-stat" class="chart-stat">0 ms</span>
+            </div>
+            <canvas id="chart-rpc-p95" class="chart-canvas"></canvas>
+          </article>
+        </div>
         <h3>Metrics</h3>
         <pre id="metrics"></pre>
         <h3>Diagnostics</h3>
@@ -128,14 +214,19 @@
       const STATE_WATCH_ID = "console-state-watch";
       const DASHBOARD_SUBSCRIPTION_ID = "console-dashboard-sub";
       const CONSOLE_CLIENT_ID_KEY = "superhub.console.clientId";
+      const MAX_DASHBOARD_POINTS = 360;
+      const DASHBOARD_HISTORY_WINDOW_MS = 10 * 60 * 1000;
+      const ROLLING_MIN_WINDOW_MS = 60 * 1000;
 
       let ws = null;
       let wsReconnectTimer = null;
       let wsToken = null;
       let wsWatchPrefix = null;
+      let chartResizeRaf = null;
 
       let inspectorMessages = [];
       let stateEntriesByPath = new Map();
+      let dashboardHistory = [];
 
       const savedToken = localStorage.getItem("superhub.token") || "";
       tokenInput.value = savedToken;
@@ -182,6 +273,16 @@
 
       inspectorFilter.addEventListener("input", () => {
         renderInspector();
+      });
+
+      window.addEventListener("resize", () => {
+        if (chartResizeRaf) {
+          cancelAnimationFrame(chartResizeRaf);
+        }
+        chartResizeRaf = requestAnimationFrame(() => {
+          renderDashboardCharts();
+          chartResizeRaf = null;
+        });
       });
 
       async function api(path, init = {}) {
@@ -253,6 +354,317 @@
         }
       }
 
+      function toFiniteNumber(value, fallback = 0) {
+        const parsed = Number(value);
+        return Number.isFinite(parsed) ? parsed : fallback;
+      }
+
+      function sumRecordValues(record) {
+        if (!record || typeof record !== "object") {
+          return 0;
+        }
+
+        return Object.values(record).reduce((sum, value) => sum + toFiniteNumber(value, 0), 0);
+      }
+
+      function upsertDashboardHistory(health, metrics, diagnostics) {
+        if (!health || !metrics) {
+          return;
+        }
+
+        const ts = toFiniteNumber(diagnostics?.ts || health?.ts || Date.now(), Date.now());
+        const point = {
+          ts,
+          clients: toFiniteNumber(health.sessions),
+          services: toFiniteNumber(health.services),
+          messagesIn: sumRecordValues(metrics.messagesIn),
+          messagesOut: sumRecordValues(metrics.messagesOut),
+          bytesIn: toFiniteNumber(metrics.bytesIn),
+          bytesOut: toFiniteNumber(metrics.bytesOut),
+          droppedMessages: toFiniteNumber(metrics.droppedMessages),
+          queuedMessages: toFiniteNumber(diagnostics?.queues?.totalMessages),
+          queuedBytes: toFiniteNumber(diagnostics?.queues?.totalBytes),
+          rpcP95Ms: toFiniteNumber(metrics.rpcLatencyP95Ms),
+          reconnectCount: toFiniteNumber(metrics.reconnectCount)
+        };
+
+        const last = dashboardHistory[dashboardHistory.length - 1];
+        if (last && ts <= last.ts) {
+          dashboardHistory[dashboardHistory.length - 1] = point;
+        } else {
+          dashboardHistory.push(point);
+        }
+
+        const minTs = point.ts - DASHBOARD_HISTORY_WINDOW_MS;
+        while (
+          dashboardHistory.length > MAX_DASHBOARD_POINTS ||
+          (dashboardHistory.length > 1 && dashboardHistory[0].ts < minTs)
+        ) {
+          dashboardHistory.shift();
+        }
+
+        renderDashboardCharts();
+      }
+
+      function buildSeries(valueSelector, transform = (value) => value) {
+        return dashboardHistory.map((point) => ({
+          ts: point.ts,
+          value: transform(valueSelector(point))
+        }));
+      }
+
+      function buildRateSeries(valueSelector, options = {}) {
+        const scaleMs = toFiniteNumber(options.scaleMs, 1000);
+        const windowMs = toFiniteNumber(options.windowMs, 0);
+        const transform = typeof options.transform === "function" ? options.transform : (value) => value;
+        const output = [];
+        let windowStart = 0;
+
+        for (let i = 0; i < dashboardHistory.length; i += 1) {
+          const current = dashboardHistory[i];
+          if (i === 0) {
+            output.push({ ts: current.ts, value: 0 });
+            continue;
+          }
+
+          let baseIndex = i - 1;
+          if (windowMs > 0) {
+            const threshold = current.ts - windowMs;
+            while (windowStart < i - 1 && dashboardHistory[windowStart + 1].ts <= threshold) {
+              windowStart += 1;
+            }
+            baseIndex = windowStart;
+          }
+
+          const base = dashboardHistory[baseIndex];
+          const elapsedMs = current.ts - base.ts;
+          if (elapsedMs <= 0) {
+            output.push({ ts: current.ts, value: 0 });
+            continue;
+          }
+
+          const delta = valueSelector(current) - valueSelector(base);
+          const rate = Math.max(0, (delta * scaleMs) / elapsedMs);
+          output.push({
+            ts: current.ts,
+            value: transform(rate)
+          });
+        }
+
+        return output;
+      }
+
+      function latestValue(series) {
+        if (!Array.isArray(series) || series.length === 0) {
+          return 0;
+        }
+        return toFiniteNumber(series[series.length - 1].value, 0);
+      }
+
+      function renderDashboardCharts() {
+        const clientsSeries = buildSeries((point) => point.clients);
+        const servicesSeries = buildSeries((point) => point.services);
+        const inKbpsSeries = buildRateSeries((point) => point.bytesIn, {
+          scaleMs: 1000,
+          transform: (value) => value / 1024
+        });
+        const outKbpsSeries = buildRateSeries((point) => point.bytesOut, {
+          scaleMs: 1000,
+          transform: (value) => value / 1024
+        });
+        const inMpsSeries = buildRateSeries((point) => point.messagesIn, {
+          scaleMs: 1000
+        });
+        const outMpsSeries = buildRateSeries((point) => point.messagesOut, {
+          scaleMs: 1000
+        });
+        const inKbpmSeries = buildRateSeries((point) => point.bytesIn, {
+          windowMs: ROLLING_MIN_WINDOW_MS,
+          scaleMs: 60000,
+          transform: (value) => value / 1024
+        });
+        const outKbpmSeries = buildRateSeries((point) => point.bytesOut, {
+          windowMs: ROLLING_MIN_WINDOW_MS,
+          scaleMs: 60000,
+          transform: (value) => value / 1024
+        });
+        const queueMessagesSeries = buildSeries((point) => point.queuedMessages);
+        const queueKbSeries = buildSeries((point) => point.queuedBytes, (value) => value / 1024);
+        const dropRateSeries = buildRateSeries((point) => point.droppedMessages, {
+          scaleMs: 1000
+        });
+        const rpcP95Series = buildSeries((point) => point.rpcP95Ms);
+
+        setChartStat("chart-clients-stat", `${formatCompactNumber(latestValue(clientsSeries))}`);
+        setChartStat("chart-services-stat", `${formatCompactNumber(latestValue(servicesSeries))}`);
+        setChartStat("chart-in-kbps-stat", `${formatRate(latestValue(inKbpsSeries))} KB/s`);
+        setChartStat("chart-out-kbps-stat", `${formatRate(latestValue(outKbpsSeries))} KB/s`);
+        setChartStat("chart-in-mps-stat", `${formatRate(latestValue(inMpsSeries))} msg/s`);
+        setChartStat("chart-out-mps-stat", `${formatRate(latestValue(outMpsSeries))} msg/s`);
+        setChartStat("chart-in-kbpm-stat", `${formatRate(latestValue(inKbpmSeries))} KB/min`);
+        setChartStat("chart-out-kbpm-stat", `${formatRate(latestValue(outKbpmSeries))} KB/min`);
+        setChartStat("chart-queue-msg-stat", `${formatCompactNumber(latestValue(queueMessagesSeries))}`);
+        setChartStat("chart-queue-kb-stat", `${formatRate(latestValue(queueKbSeries))} KB`);
+        setChartStat("chart-drop-rate-stat", `${formatRate(latestValue(dropRateSeries))} msg/s`);
+        setChartStat("chart-rpc-p95-stat", `${formatRate(latestValue(rpcP95Series))} ms`);
+
+        drawLineChart("chart-clients", clientsSeries, { minZero: true, color: "#64d2ff", yFormatter: formatCompactNumber });
+        drawLineChart("chart-services", servicesSeries, { minZero: true, color: "#6ee7b7", yFormatter: formatCompactNumber });
+        drawLineChart("chart-in-kbps", inKbpsSeries, { minZero: true, color: "#fbbf24", yFormatter: formatRate });
+        drawLineChart("chart-out-kbps", outKbpsSeries, { minZero: true, color: "#f59e0b", yFormatter: formatRate });
+        drawLineChart("chart-in-mps", inMpsSeries, { minZero: true, color: "#22d3ee", yFormatter: formatRate });
+        drawLineChart("chart-out-mps", outMpsSeries, { minZero: true, color: "#06b6d4", yFormatter: formatRate });
+        drawLineChart("chart-in-kbpm", inKbpmSeries, { minZero: true, color: "#a78bfa", yFormatter: formatRate });
+        drawLineChart("chart-out-kbpm", outKbpmSeries, { minZero: true, color: "#8b5cf6", yFormatter: formatRate });
+        drawLineChart("chart-queue-msg", queueMessagesSeries, { minZero: true, color: "#f87171", yFormatter: formatCompactNumber });
+        drawLineChart("chart-queue-kb", queueKbSeries, { minZero: true, color: "#fb7185", yFormatter: formatRate });
+        drawLineChart("chart-drop-rate", dropRateSeries, { minZero: true, color: "#ef4444", yFormatter: formatRate });
+        drawLineChart("chart-rpc-p95", rpcP95Series, { minZero: true, color: "#4ade80", yFormatter: formatRate });
+      }
+
+      function setChartStat(id, value) {
+        const element = document.getElementById(id);
+        if (!element) {
+          return;
+        }
+        element.textContent = String(value);
+      }
+
+      function drawLineChart(canvasId, series, options = {}) {
+        const canvas = document.getElementById(canvasId);
+        if (!(canvas instanceof HTMLCanvasElement)) {
+          return;
+        }
+
+        const context = canvas.getContext("2d");
+        if (!context) {
+          return;
+        }
+
+        const dpr = Math.max(1, window.devicePixelRatio || 1);
+        const cssWidth = Math.max(240, canvas.clientWidth || 240);
+        const cssHeight = Math.max(140, canvas.clientHeight || 140);
+        const width = Math.floor(cssWidth * dpr);
+        const height = Math.floor(cssHeight * dpr);
+
+        if (canvas.width !== width || canvas.height !== height) {
+          canvas.width = width;
+          canvas.height = height;
+        }
+
+        context.clearRect(0, 0, width, height);
+        context.fillStyle = "#0f1318";
+        context.fillRect(0, 0, width, height);
+
+        const padLeft = 44 * dpr;
+        const padRight = 10 * dpr;
+        const padTop = 10 * dpr;
+        const padBottom = 22 * dpr;
+        const plotWidth = width - padLeft - padRight;
+        const plotHeight = height - padTop - padBottom;
+
+        if (!Array.isArray(series) || series.length < 2 || plotWidth <= 0 || plotHeight <= 0) {
+          context.fillStyle = "#7b8793";
+          context.font = `${12 * dpr}px ui-sans-serif`;
+          context.fillText("Waiting for data...", padLeft, padTop + 16 * dpr);
+          return;
+        }
+
+        const values = series
+          .map((point) => toFiniteNumber(point.value, NaN))
+          .filter((value) => Number.isFinite(value));
+        if (values.length === 0) {
+          return;
+        }
+
+        let minY = options.minZero ? 0 : Math.min(...values);
+        let maxY = Math.max(...values);
+        if (maxY <= minY) {
+          maxY = minY + 1;
+        }
+        if (options.minZero) {
+          minY = 0;
+        }
+
+        const minTs = toFiniteNumber(series[0].ts, Date.now());
+        const maxTs = Math.max(minTs + 1, toFiniteNumber(series[series.length - 1].ts, minTs + 1));
+        const yFormatter = typeof options.yFormatter === "function" ? options.yFormatter : formatCompactNumber;
+        const color = options.color || "#64d2ff";
+
+        context.strokeStyle = "#243140";
+        context.lineWidth = 1 * dpr;
+        context.fillStyle = "#94a3b8";
+        context.font = `${10 * dpr}px ui-monospace`;
+        context.textAlign = "right";
+        context.textBaseline = "middle";
+
+        const gridLines = 4;
+        for (let line = 0; line <= gridLines; line += 1) {
+          const ratio = line / gridLines;
+          const y = padTop + plotHeight * ratio;
+          const value = maxY - (maxY - minY) * ratio;
+
+          context.beginPath();
+          context.moveTo(padLeft, y);
+          context.lineTo(padLeft + plotWidth, y);
+          context.stroke();
+
+          context.fillText(yFormatter(value), padLeft - 6 * dpr, y);
+        }
+
+        context.textAlign = "left";
+        context.textBaseline = "top";
+        context.fillText(formatTimeLabel(minTs), padLeft, padTop + plotHeight + 6 * dpr);
+        context.textAlign = "right";
+        context.fillText(formatTimeLabel(maxTs), padLeft + plotWidth, padTop + plotHeight + 6 * dpr);
+
+        context.strokeStyle = color;
+        context.lineWidth = 2 * dpr;
+        context.beginPath();
+
+        for (let i = 0; i < series.length; i += 1) {
+          const point = series[i];
+          const x = padLeft + ((toFiniteNumber(point.ts, minTs) - minTs) / (maxTs - minTs)) * plotWidth;
+          const normalized = (toFiniteNumber(point.value, 0) - minY) / (maxY - minY);
+          const y = padTop + plotHeight - normalized * plotHeight;
+
+          if (i === 0) {
+            context.moveTo(x, y);
+          } else {
+            context.lineTo(x, y);
+          }
+        }
+
+        context.stroke();
+      }
+
+      function formatCompactNumber(value) {
+        const rounded = toFiniteNumber(value, 0);
+        if (Math.abs(rounded) >= 1000) {
+          return rounded.toLocaleString("fr-FR", { maximumFractionDigits: 1 });
+        }
+        return rounded.toLocaleString("fr-FR", { maximumFractionDigits: 0 });
+      }
+
+      function formatRate(value) {
+        const numeric = toFiniteNumber(value, 0);
+        if (numeric >= 100) {
+          return numeric.toFixed(0);
+        }
+        if (numeric >= 10) {
+          return numeric.toFixed(1);
+        }
+        return numeric.toFixed(2);
+      }
+
+      function formatTimeLabel(ts) {
+        try {
+          return new Date(ts).toLocaleTimeString();
+        } catch {
+          return "--:--:--";
+        }
+      }
+
       function applyDashboardSnapshot(payload) {
         const health = payload && typeof payload.health === "object" ? payload.health : null;
         const metrics = payload && typeof payload.metrics === "object" ? payload.metrics : null;
@@ -266,6 +678,9 @@
         }
         if (diagnostics) {
           renderDiagnostics(diagnostics);
+        }
+        if (health && metrics) {
+          upsertDashboardHistory(health, metrics, diagnostics);
         }
         if (services) {
           renderServices({ services });
@@ -344,6 +759,7 @@
 
           metricsOutput.textContent = JSON.stringify(metrics, null, 2);
           renderDiagnostics(diagnostics);
+          upsertDashboardHistory(health, metrics, diagnostics);
           configOutput.textContent = JSON.stringify(config, null, 2);
 
           await refreshState();

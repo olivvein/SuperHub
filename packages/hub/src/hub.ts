@@ -106,6 +106,8 @@ interface InspectorRecord {
 interface Metrics {
   messagesIn: Record<HubMessageType, number>;
   messagesOut: Record<HubMessageType, number>;
+  bytesIn: number;
+  bytesOut: number;
   droppedMessages: number;
   reconnectCount: number;
   rpcLatenciesMs: number[];
@@ -184,6 +186,8 @@ export async function createHubRuntime(config: HubConfig): Promise<HubRuntime> {
       presence: 0,
       error: 0
     },
+    bytesIn: 0,
+    bytesOut: 0,
     droppedMessages: 0,
     reconnectCount: 0,
     rpcLatenciesMs: []
@@ -724,6 +728,8 @@ export async function createHubRuntime(config: HubConfig): Promise<HubRuntime> {
   function metricsSnapshot(): {
     messagesIn: Metrics["messagesIn"];
     messagesOut: Metrics["messagesOut"];
+    bytesIn: number;
+    bytesOut: number;
     droppedMessages: number;
     reconnectCount: number;
     rpcLatencyAvgMs: number;
@@ -736,6 +742,8 @@ export async function createHubRuntime(config: HubConfig): Promise<HubRuntime> {
     return {
       messagesIn: metrics.messagesIn,
       messagesOut: metrics.messagesOut,
+      bytesIn: metrics.bytesIn,
+      bytesOut: metrics.bytesOut,
       droppedMessages: metrics.droppedMessages,
       reconnectCount: metrics.reconnectCount,
       rpcLatencyAvgMs: Number(mean.toFixed(2)),
@@ -927,6 +935,9 @@ export async function createHubRuntime(config: HubConfig): Promise<HubRuntime> {
   }
 
   function handleSocketMessage(session: SessionState, raw: string): void {
+    const rawBytes = Buffer.byteLength(raw, "utf8");
+    metrics.bytesIn += rawBytes;
+
     if (!incrementSessionRate(session)) {
       logger.warn("ws.rate_limit", {
         sessionId: session.sessionId,
@@ -942,11 +953,11 @@ export async function createHubRuntime(config: HubConfig): Promise<HubRuntime> {
       return;
     }
 
-    if (raw.length > config.limits.maxMessageSizeBytes) {
+    if (rawBytes > config.limits.maxMessageSizeBytes) {
       logger.warn("ws.message_too_large", {
         sessionId: session.sessionId,
         clientId: session.clientId,
-        size: raw.length,
+        size: rawBytes,
         max: config.limits.maxMessageSizeBytes
       });
       const response = errorEnvelope("MESSAGE_TOO_LARGE", "Message exceeds max payload size", session.clientId, {
@@ -1559,6 +1570,7 @@ export async function createHubRuntime(config: HubConfig): Promise<HubRuntime> {
     if (!shouldQueue) {
       try {
         session.socket.send(raw);
+        metrics.bytesOut += bytes;
         if (shouldTrack) {
           metrics.messagesOut[envelope.type] += 1;
           pushInspector("out", session.sessionId, envelope);
@@ -1632,6 +1644,7 @@ export async function createHubRuntime(config: HubConfig): Promise<HubRuntime> {
       session.queueBytes -= item.bytes;
       try {
         session.socket.send(item.raw);
+        metrics.bytesOut += item.bytes;
         if (shouldTrackInternalEnvelope(item.envelope)) {
           metrics.messagesOut[item.envelope.type] += 1;
           pushInspector("out", session.sessionId, item.envelope);
