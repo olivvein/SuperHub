@@ -5,6 +5,8 @@ Hub local HTTPS/WSS pour projets perso (Mac mini, Node.js/TypeScript).
 ## Documentation de suivi
 
 - Statut implementation + reste a faire: `docs/IMPLEMENTATION_STATUS.md`
+- Runbook ops (TLS local, trust iOS/macOS, supervision): `docs/OPS_RUNBOOK.md`
+- Guide dev exemples music: `examples/README.md`
 
 ## Ce qui est inclus
 
@@ -59,6 +61,7 @@ npm run dev
 
 - en direct: `http://127.0.0.1:7777/console/`
 - via Caddy/TLS: `https://hub.local/console/`
+- pairing: `https://hub.local/console/pair`
 
 ## Caddy + TLS local (LAN)
 
@@ -68,6 +71,8 @@ npm run dev
 4. Vérifier:
    - `https://hub.local/api/health`
    - `wss://hub.local/ws`
+
+Procedure complete detaillee: `docs/OPS_RUNBOOK.md`.
 
 ## API HTTP
 

@@ -37,6 +37,26 @@ body {
   color: var(--muted);
 }
 
+.status-banner {
+  margin: 0 20px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: #fff;
+}
+
+.status-banner.error {
+  background: #fff2f2;
+  border-color: #e8a6a6;
+  color: #7d1e1e;
+}
+
+.status-banner.warn {
+  background: #fff8ea;
+  border-color: #e8cf99;
+  color: #674700;
+}
+
 .token-box {
   display: grid;
   gap: 8px;
@@ -151,6 +171,10 @@ pre {
   display: flex;
   gap: 8px;
   margin-bottom: 10px;
+}
+
+.hidden {
+  display: none;
 }
 
 @media (max-width: 860px) {

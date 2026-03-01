@@ -59,7 +59,7 @@ Ce document resume ce qui a ete implemente dans le repo, les problemes rencontre
   - `audit` + retention TTL
 - Console web:
   - Dashboard, services, clients, inspector, state viewer, config
-  - page pairing simple (`/console/pair`)
+  - page pairing (`/console/pair`) avec QR code (payload URL+token)
 
 ### 1.4 Package `@superhub/sdk`
 
@@ -90,7 +90,8 @@ Ce document resume ce qui a ete implemente dans le repo, les problemes rencontre
 - Allowlist IP refusant `127.0.0.1` a tort: corrige (import `ipaddr.js` ESM + normalisation IP).
 - Console blanche/500 intermittents:
   - serving static console rendu plus defensif
-  - script console in-line dans `index.html`
+  - strategie unique de chargement JS inline dans `index.html`
+  - fallback UX explicite en cas de token invalide / allowlist refusee
   - headers `Cache-Control: no-store` pour limiter les artefacts cache
 
 ## 3. Validation effectuee
@@ -124,8 +125,8 @@ Notation:
   - Hub route `rpc_req/rpc_res` et endpoint HTTP RPC OK.
   - SDK provider complete avec `onRpc(method, handler)` + reponse `rpc_res` automatique.
 - State + watch (patch): `DONE`
-- Token + pairing page: `PARTIAL`
-  - page pairing existante, QR code reel non implemente.
+- Token + pairing page: `DONE`
+  - QR code reel + fallback si dependance indisponible
 - Metrics basiques: `DONE`
 - Persistance SQLite snapshots: `DONE`
 
@@ -153,16 +154,17 @@ Notation:
 
 ### P1 - important
 
-4. Pairing QR reel
-- Generer un QR code sur `/console/pair` (payload url+token).
+4. Pairing QR reel: `DONE`
+- QR code genere sur `/console/pair` avec payload JSON `url+token`.
 
-5. Nettoyage console
-- Conserver une seule strategie de chargement JS (in-line ou fichier externe) et documenter.
-- Ajouter fallback UX clair quand token invalide.
+5. Nettoyage console: `DONE`
+- Une seule strategie de chargement JS inline (plus de dependance au fetch `app.js`).
+- Banner d'erreur clair pour token invalide / IP non allowlist.
 
-6. Docs ops complete
-- Procedure macOS + iOS trust CA detaillee (pas a pas).
-- Procedure de restart/supervision (launchd, pm2 ou service manager).
+6. Docs ops complete: `DONE`
+- Runbook `docs/OPS_RUNBOOK.md`:
+  - trust CA macOS+iOS pas-a-pas
+  - supervision/restart launchd + option PM2
 
 ### P2 - evolution
 
@@ -188,4 +190,4 @@ Notation:
 ## 7. Notes importantes
 
 - La stack est fonctionnelle pour dev local et experimentation LAN.
-- Avant usage "always-on" sur Mac mini, la priorite technique est: tests automatiques + finalisation RPC provider SDK + runbook ops.
+- Les chantiers restants sont de niveau V1.1/P2 (export/import config, traces UX, rotation token avancee).

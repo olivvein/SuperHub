@@ -19,6 +19,8 @@
       </div>
     </header>
 
+    <div id="status-banner" class="status-banner hidden"></div>
+
     <nav class="tabs">
       <button data-tab="dashboard" class="active">Dashboard</button>
       <button data-tab="services">Services</button>
@@ -95,6 +97,7 @@
     <script type="module">
       const tokenInput = document.getElementById("token");
       const saveTokenButton = document.getElementById("save-token");
+      const statusBanner = document.getElementById("status-banner");
       const healthGrid = document.getElementById("health-grid");
       const metricsOutput = document.getElementById("metrics");
       const servicesBody = document.getElementById("services-body");
@@ -155,8 +158,11 @@
         });
 
         if (!response.ok) {
-          const text = await response.text();
-          throw new Error(`HTTP ${response.status}: ${text}`);
+          const body = await response.text();
+          const error = new Error(`HTTP ${response.status}: ${body}`);
+          error.statusCode = response.status;
+          error.body = body;
+          throw error;
         }
 
         return response.json();
@@ -173,10 +179,7 @@
         ];
 
         healthGrid.innerHTML = items
-          .map(
-            ([label, value]) =>
-              `<div class="card"><div class="label">${escapeHtml(label)}</div><div class="value">${escapeHtml(value)}</div></div>`
-          )
+          .map(([label, value]) => `<div class="card"><div class="label">${escapeHtml(label)}</div><div class="value">${escapeHtml(value)}</div></div>`)
           .join("");
       }
 
@@ -250,6 +253,7 @@
             api("/api/config")
           ]);
 
+          clearStatus();
           renderHealth(health, metrics);
           renderServices(services);
           renderClients(clients);
@@ -262,8 +266,33 @@
 
           await refreshState();
         } catch (error) {
+          const statusCode = Number(error.statusCode || 0);
+          if (statusCode === 401) {
+            setStatus(
+              "Token invalide ou manquant. Mets un token valide dans X-Hub-Token puis clique Appliquer.",
+              "error"
+            );
+            tokenInput.focus();
+          } else if (statusCode === 403) {
+            setStatus("Acces refuse par allowlist IP. Verifie hub.config (security.allowlistSubnets).", "error");
+          } else {
+            setStatus("Impossible de charger la console. Verifie que le hub est en ligne.", "warn");
+          }
+
           inspectorLog.textContent = String(error);
         }
+      }
+
+      function setStatus(message, kind) {
+        statusBanner.textContent = message;
+        statusBanner.classList.remove("hidden", "error", "warn");
+        statusBanner.classList.add(kind);
+      }
+
+      function clearStatus() {
+        statusBanner.textContent = "";
+        statusBanner.classList.add("hidden");
+        statusBanner.classList.remove("error", "warn");
       }
 
       function escapeHtml(value) {

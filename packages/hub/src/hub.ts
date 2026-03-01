@@ -554,6 +554,8 @@ export async function createHubRuntime(config: HubConfig): Promise<HubRuntime> {
     };
 
     const serialized = JSON.stringify(payload);
+    const qrDataUrl = await generateQrDataUrl(serialized);
+    const hasQr = Boolean(qrDataUrl);
 
     return reply
       .type("text/html; charset=utf-8")
@@ -568,13 +570,41 @@ export async function createHubRuntime(config: HubConfig): Promise<HubRuntime> {
       code, pre { background: #f3f3f3; padding: 4px 6px; border-radius: 6px; }
       pre { white-space: pre-wrap; }
       .pill { display: inline-block; padding: 4px 8px; border-radius: 999px; background: #111; color: #fff; }
+      .pair-grid { display: grid; grid-template-columns: 300px 1fr; gap: 16px; align-items: start; margin: 16px 0; }
+      .qr { border: 1px solid #ddd; border-radius: 10px; width: 280px; height: 280px; background: #fff; display: flex; align-items: center; justify-content: center; }
+      .warn { padding: 10px; border-radius: 8px; background: #fff4e5; border: 1px solid #f0ca91; color: #6d4700; }
+      button { border: 1px solid #222; background: #fff; padding: 8px 12px; border-radius: 8px; cursor: pointer; }
+      @media (max-width: 760px) { .pair-grid { grid-template-columns: 1fr; } }
     </style>
   </head>
   <body>
     <h1>Pairing SuperHub</h1>
     <p class="pill">${escapeHtml(config.domain)}</p>
-    <p>Copiez ce JSON dans votre app cliente (ou scannez avec un utilitaire QR externe).</p>
-    <pre id="payload">${escapeHtml(serialized)}</pre>
+    <p>Scanne le QR code depuis ton app cliente, ou copie le JSON manuellement.</p>
+    <div class="pair-grid">
+      <div class="qr">
+        ${
+          hasQr
+            ? `<img src="${qrDataUrl}" width="280" height="280" alt="QR code pairing SuperHub" />`
+            : `<div class="warn">QR indisponible: installe la dependance <code>qrcode</code> puis redemarre le hub.</div>`
+        }
+      </div>
+      <div>
+        <button id="copy-btn">Copier le JSON</button>
+        <pre id="payload">${escapeHtml(serialized)}</pre>
+      </div>
+    </div>
+    <script>
+      document.getElementById("copy-btn")?.addEventListener("click", async () => {
+        const text = document.getElementById("payload")?.textContent || "";
+        try {
+          await navigator.clipboard.writeText(text);
+          alert("Payload copie");
+        } catch {
+          alert("Impossible de copier automatiquement");
+        }
+      });
+    </script>
   </body>
 </html>`);
   });
@@ -1831,6 +1861,22 @@ function payloadForContractValidation(envelope: HubEnvelope): { shouldValidate: 
     shouldValidate: true,
     payload: envelope.payload
   };
+}
+
+async function generateQrDataUrl(content: string): Promise<string | null> {
+  const moduleName = "qrcode";
+  try {
+    const qrcodeModule = (await import(moduleName)) as {
+      toDataURL: (value: string, options?: Record<string, unknown>) => Promise<string>;
+    };
+    return await qrcodeModule.toDataURL(content, {
+      errorCorrectionLevel: "M",
+      margin: 1,
+      width: 280
+    });
+  } catch {
+    return null;
+  }
 }
 
 function minuteWindow(ts: number): number {
