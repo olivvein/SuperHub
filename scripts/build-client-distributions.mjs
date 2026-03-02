@@ -12,6 +12,7 @@ const distRoot = path.join(repoRoot, "packages/hub/public/apps/client/dist");
 const npmOutDir = path.join(distRoot, "npm");
 const pythonOutDir = path.join(distRoot, "python");
 const certsOutDir = path.join(distRoot, "certs");
+const docsOutDir = path.join(distRoot, "docs");
 const pythonCommand = process.env.SUPERHUB_PYTHON || "python3";
 
 async function ensureCleanDir(dir) {
@@ -39,6 +40,21 @@ function runLogged(command, args, options = {}) {
 function copyFile(src, dest) {
   fs.copyFileSync(src, dest);
 }
+
+const DOCS_TO_PUBLISH = [
+  { source: "README.md", title: "SuperHub README" },
+  { source: "MAKE-A-MULTIPLAYER-GAME.MD", title: "Guide: Multiplayer Game Networking" },
+  { source: "MAKE-A-MULTI-USER-CHAT.MD", title: "Guide: Multi-User Chat Networking" },
+  { source: "client/README.md", title: "Client Overview" },
+  { source: "client/node-ts.md", title: "Client Guide: Node.js / TypeScript" },
+  { source: "client/react.md", title: "Client Guide: React" },
+  { source: "client/python.md", title: "Client Guide: Python" },
+  { source: "examples/README.md", title: "Examples Guide (Node/TS)" },
+  { source: "examples/python/README.md", title: "Examples Guide (Python)" },
+  { source: "docs/OPS_RUNBOOK.md", title: "Ops Runbook (TLS/Caddy)" },
+  { source: "docs/IMPLEMENTATION_STATUS.md", title: "Implementation Status" },
+  { source: "docs/WORKLOG_2026-03-01.md", title: "Worklog 2026-03-01" }
+];
 
 async function buildNodeDist() {
   console.log("[client:dist] building @superhub/sdk");
@@ -143,6 +159,61 @@ async function buildPythonDist() {
     usedManualWheel,
     wheel: latestWheel,
     sdist: latestSdist
+  };
+}
+
+async function publishDocs() {
+  await fsp.mkdir(docsOutDir, { recursive: true });
+  const published = [];
+
+  for (const entry of DOCS_TO_PUBLISH) {
+    const absSource = path.join(repoRoot, entry.source);
+    if (!fs.existsSync(absSource)) {
+      continue;
+    }
+    const fileName = entry.source.replaceAll("/", "__");
+    const dest = path.join(docsOutDir, fileName);
+    copyFile(absSource, dest);
+    published.push({
+      source: entry.source,
+      fileName,
+      title: entry.title
+    });
+  }
+
+  const links = published
+    .map((doc) => `<li><a href="./${doc.fileName}">${doc.title}</a> <code>${doc.source}</code></li>`)
+    .join("\n      ");
+
+  const docsIndexHtml = `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>SuperHub Documentation Bundle</title>
+    <style>
+      body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; margin: 24px; line-height: 1.5; }
+      code { background: #f1f5f9; padding: 2px 6px; border-radius: 4px; }
+      .box { border: 1px solid #d1d5db; border-radius: 10px; padding: 16px; margin-bottom: 16px; }
+    </style>
+  </head>
+  <body>
+    <h1>SuperHub Documentation Bundle</h1>
+    <div class="box">
+      <p>These Markdown files are published with the client distribution so any LAN computer can fetch them directly.</p>
+      <ul>
+      ${links || "<li><em>No docs published</em></li>"}
+      </ul>
+    </div>
+  </body>
+</html>
+`;
+
+  await fsp.writeFile(path.join(docsOutDir, "index.html"), docsIndexHtml, "utf8");
+
+  return {
+    count: published.length,
+    files: published
   };
 }
 
@@ -286,7 +357,7 @@ async function writePythonSimpleIndex(pythonMeta) {
   await fsp.writeFile(path.join(packageIndexDir, "index.html"), packageHtml, "utf8");
 }
 
-async function writeIndex(nodeMeta, pythonMeta, certMeta) {
+async function writeIndex(nodeMeta, pythonMeta, certMeta, docsMeta) {
   const host = "macbook-pro-de-olivier.local";
   const certSection = certMeta
     ? `<div class="box">
@@ -341,6 +412,13 @@ HUB_TLS_CA_FILE="$HOME/.superhub-caddy-root.crt" \\
 python -m superhub_client.examples.iss_updater --hz 10</pre>
     </div>
 
+    <div class="box">
+      <h2>Documentation</h2>
+      <p>Published docs bundle: <a href="./docs/index.html">docs/index.html</a></p>
+      <p>Files: <strong>${docsMeta.count}</strong></p>
+      <pre>open "https://${host}/apps/client/dist/docs/index.html"</pre>
+    </div>
+
     ${certSection}
   </body>
 </html>
@@ -354,7 +432,8 @@ python -m superhub_client.examples.iss_updater --hz 10</pre>
     host,
     cert: certMeta,
     npm: nodeMeta,
-    python: pythonMeta
+    python: pythonMeta,
+    docs: docsMeta
   };
   await fsp.writeFile(path.join(distRoot, "metadata.json"), JSON.stringify(metadata, null, 2), "utf8");
 }
@@ -363,11 +442,13 @@ async function main() {
   await ensureCleanDir(npmOutDir);
   await ensureCleanDir(pythonOutDir);
   await ensureCleanDir(certsOutDir);
+  await ensureCleanDir(docsOutDir);
 
   const nodeMeta = await buildNodeDist();
   const pythonMeta = await buildPythonDist();
   const certMeta = await publishCaddyRootCert();
-  await writeIndex(nodeMeta, pythonMeta, certMeta);
+  const docsMeta = await publishDocs();
+  await writeIndex(nodeMeta, pythonMeta, certMeta, docsMeta);
 
   console.log("[client:dist] done");
   console.log(`[client:dist] open: https://macbook-pro-de-olivier.local/apps/client/dist/`);

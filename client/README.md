@@ -42,11 +42,14 @@ This generates:
 - `packages/hub/public/apps/client/dist/npm/superhub-sdk-latest.tgz`
 - `packages/hub/public/apps/client/dist/python/superhub_client-<version>-py3-none-any.whl`
 - `packages/hub/public/apps/client/dist/python/simple/superhub-client/index.html`
+- `packages/hub/public/apps/client/dist/docs/index.html` (published Markdown bundle)
 - `packages/hub/public/apps/client/dist/index.html`
 
 With Hub + Caddy running, these files are available on LAN at:
 
 - `https://macbook-pro-de-olivier.local/apps/client/dist/`
+- Docs bundle:
+  - `https://macbook-pro-de-olivier.local/apps/client/dist/docs/index.html`
 
 Install from another computer:
 
