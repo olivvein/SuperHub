@@ -1,4 +1,4 @@
-https://macbook-pro-de-olivier.local {
+https://mac-mini-de-olivier.local {
 	tls {
 		issuer internal
 		key_type rsa2048

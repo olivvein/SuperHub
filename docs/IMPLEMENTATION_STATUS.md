@@ -195,7 +195,7 @@ Notation:
 
 ## 6. Check-list de mise en prod LAN
 
-1. Verifier DNS local `macbook-pro-de-olivier.local` resolu pour tous clients LAN.
+1. Verifier DNS local `mac-mini-de-olivier.local` resolu pour tous clients LAN.
 2. Activer Caddy TLS et confiance CA sur macOS + iOS.
 3. Definir token robuste (`HUB_TOKEN`) et retirer valeurs par defaut.
 4. Verifier `allowlistSubnets` (eviter `*` hors debug).

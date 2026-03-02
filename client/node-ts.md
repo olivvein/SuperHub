@@ -13,7 +13,7 @@ This guide is for Node services/scripts using `@superhub/sdk`.
 Install from LAN artifact (no npm publish):
 
 ```bash
-npm install "https://macbook-pro-de-olivier.local/apps/client/dist/npm/superhub-sdk-latest.tgz"
+npm install "https://mac-mini-de-olivier.local/apps/client/dist/npm/superhub-sdk-latest.tgz"
 ```
 
 Scaffold bundled examples into your project:
@@ -45,7 +45,7 @@ import { homedir } from "node:os";
 import path from "node:path";
 import { HubClient } from "@superhub/sdk";
 
-const httpUrl = (process.env.HUB_HTTP_URL || "https://macbook-pro-de-olivier.local").replace(/\/$/, "");
+const httpUrl = (process.env.HUB_HTTP_URL || "https://mac-mini-de-olivier.local").replace(/\/$/, "");
 const useTls = httpUrl.startsWith("https://");
 const tlsInsecure = ["1", "true", "yes", "on"].includes((process.env.HUB_TLS_INSECURE || "").toLowerCase());
 const defaultCaddyCa = path.join(homedir(), "Library", "Application Support", "Caddy", "pki", "authorities", "local", "root.crt");
@@ -112,7 +112,7 @@ client.onRpc("music.play", async (args) => {
 
 ## 5) Useful Env Vars
 
-- `HUB_HTTP_URL` default: `https://macbook-pro-de-olivier.local`
+- `HUB_HTTP_URL` default: `https://mac-mini-de-olivier.local`
 - `HUB_TOKEN` shared token
 - `CLIENT_ID` optional stable id
 - `HUB_TLS_CA_FILE` custom CA path
@@ -123,8 +123,8 @@ client.onRpc("music.play", async (args) => {
 - `UNABLE_TO_GET_ISSUER_CERT_LOCALLY`:
   - set `HUB_TLS_CA_FILE` to Caddy `root.crt`.
   - for install step:
-  - `curl -k "https://macbook-pro-de-olivier.local/apps/client/dist/certs/caddy-local-root.crt" -o "$HOME/.superhub-caddy-root.crt"`
-  - `npm_config_cafile="$HOME/.superhub-caddy-root.crt" npm install "https://macbook-pro-de-olivier.local/apps/client/dist/npm/superhub-sdk-latest.tgz"`
+  - `curl -k "https://mac-mini-de-olivier.local/apps/client/dist/certs/caddy-local-root.crt" -o "$HOME/.superhub-caddy-root.crt"`
+  - `npm_config_cafile="$HOME/.superhub-caddy-root.crt" npm install "https://mac-mini-de-olivier.local/apps/client/dist/npm/superhub-sdk-latest.tgz"`
 - `FORBIDDEN`:
   - check `security.allowlistSubnets` and token.
 - no messages:

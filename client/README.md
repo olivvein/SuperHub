@@ -10,9 +10,9 @@ Use these docs when building new apps that connect to SuperHub over HTTPS/WSS.
 
 ## Hub Defaults
 
-- Base URL: `https://macbook-pro-de-olivier.local`
-- WebSocket endpoint: `wss://macbook-pro-de-olivier.local/ws`
-- HTTP API base: `https://macbook-pro-de-olivier.local/api`
+- Base URL: `https://mac-mini-de-olivier.local`
+- WebSocket endpoint: `wss://mac-mini-de-olivier.local/ws`
+- HTTP API base: `https://mac-mini-de-olivier.local/api`
 - Token header: `X-Hub-Token: <token>`
 - WS auth: `?token=<token>`
 
@@ -47,26 +47,26 @@ This generates:
 
 With Hub + Caddy running, these files are available on LAN at:
 
-- `https://macbook-pro-de-olivier.local/apps/client/dist/`
+- `https://mac-mini-de-olivier.local/apps/client/dist/`
 - Docs bundle:
-  - `https://macbook-pro-de-olivier.local/apps/client/dist/docs/index.html`
+  - `https://mac-mini-de-olivier.local/apps/client/dist/docs/index.html`
 
 Install from another computer:
 
 ```bash
 # Node / React
-npm install "https://macbook-pro-de-olivier.local/apps/client/dist/npm/superhub-sdk-latest.tgz"
+npm install "https://mac-mini-de-olivier.local/apps/client/dist/npm/superhub-sdk-latest.tgz"
 
 # Python
-pip install --extra-index-url "https://macbook-pro-de-olivier.local/apps/client/dist/python/simple/" superhub-client
+pip install --extra-index-url "https://mac-mini-de-olivier.local/apps/client/dist/python/simple/" superhub-client
 ```
 
 If TLS CA is not trusted in CLI tools:
 
 ```bash
-curl -k "https://macbook-pro-de-olivier.local/apps/client/dist/certs/caddy-local-root.crt" -o "$HOME/.superhub-caddy-root.crt"
-npm_config_cafile="$HOME/.superhub-caddy-root.crt" npm install "https://macbook-pro-de-olivier.local/apps/client/dist/npm/superhub-sdk-latest.tgz"
-PIP_CERT="$HOME/.superhub-caddy-root.crt" pip install --extra-index-url "https://macbook-pro-de-olivier.local/apps/client/dist/python/simple/" superhub-client
+curl -k "https://mac-mini-de-olivier.local/apps/client/dist/certs/caddy-local-root.crt" -o "$HOME/.superhub-caddy-root.crt"
+npm_config_cafile="$HOME/.superhub-caddy-root.crt" npm install "https://mac-mini-de-olivier.local/apps/client/dist/npm/superhub-sdk-latest.tgz"
+PIP_CERT="$HOME/.superhub-caddy-root.crt" pip install --extra-index-url "https://mac-mini-de-olivier.local/apps/client/dist/python/simple/" superhub-client
 ```
 
 ## Examples included in libs

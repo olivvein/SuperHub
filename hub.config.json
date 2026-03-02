@@ -1,5 +1,5 @@
 {
-  "domain": "macbook-pro-de-olivier.local",
+  "domain": "mac-mini-de-olivier.local",
   "listen": {
     "host": "127.0.0.1",
     "port": 7777
@@ -13,7 +13,7 @@
   },
   "cors": {
     "origins": [
-      "https://macbook-pro-de-olivier.local"
+      "https://mac-mini-de-olivier.local"
     ],
     "allowHeaders": [
       "Content-Type",

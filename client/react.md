@@ -13,7 +13,7 @@ This guide is for React web apps using SuperHub in the browser.
 Install from LAN artifact (no npm publish):
 
 ```bash
-npm install "https://macbook-pro-de-olivier.local/apps/client/dist/npm/superhub-sdk-latest.tgz"
+npm install "https://mac-mini-de-olivier.local/apps/client/dist/npm/superhub-sdk-latest.tgz"
 ```
 
 Copy bundled React examples:
@@ -48,7 +48,7 @@ export function useHub() {
   const clientRef = useRef<HubClient | null>(null);
 
   const httpUrl = useMemo(
-    () => (import.meta.env.VITE_HUB_HTTP_URL || "https://macbook-pro-de-olivier.local").replace(/\/$/, ""),
+    () => (import.meta.env.VITE_HUB_HTTP_URL || "https://mac-mini-de-olivier.local").replace(/\/$/, ""),
     []
   );
   const token = import.meta.env.VITE_HUB_TOKEN || "";
@@ -127,7 +127,7 @@ export default function App() {
 `.env.local`:
 
 ```bash
-VITE_HUB_HTTP_URL=https://macbook-pro-de-olivier.local
+VITE_HUB_HTTP_URL=https://mac-mini-de-olivier.local
 VITE_HUB_TOKEN=CHANGE_ME_SUPERHUB_TOKEN
 ```
 
@@ -145,7 +145,7 @@ VITE_HUB_TOKEN=CHANGE_ME_SUPERHUB_TOKEN
   - check Caddy cert issuance and trusted local CA.
 - install from `https://...tgz` fails with cert errors:
   - bootstrap cert then install:
-  - `curl -k "https://macbook-pro-de-olivier.local/apps/client/dist/certs/caddy-local-root.crt" -o "$HOME/.superhub-caddy-root.crt"`
-  - `npm_config_cafile="$HOME/.superhub-caddy-root.crt" npm install "https://macbook-pro-de-olivier.local/apps/client/dist/npm/superhub-sdk-latest.tgz"`
+  - `curl -k "https://mac-mini-de-olivier.local/apps/client/dist/certs/caddy-local-root.crt" -o "$HOME/.superhub-caddy-root.crt"`
+  - `npm_config_cafile="$HOME/.superhub-caddy-root.crt" npm install "https://mac-mini-de-olivier.local/apps/client/dist/npm/superhub-sdk-latest.tgz"`
 - auth forbidden:
   - verify `VITE_HUB_TOKEN` and hub allowlist config.
