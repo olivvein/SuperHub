@@ -6,12 +6,31 @@ services:
     image: superhub:latest
     restart: unless-stopped
     environment:
-      NODE_ENV: production
-      HUB_DOMAIN: code.samlepirate.org
-      HUB_HOST: 0.0.0.0
-      HUB_PORT: 7777
-      HUB_CORS_ORIGINS: https://code.samlepirate.org
-      HUB_SQLITE_PATH: /app/packages/hub/data/hub.sqlite
+      NODE_ENV: "production"
+      HUB_DOMAIN: "code.samlepirate.org"
+      HUB_HOST: "0.0.0.0"
+      HUB_PORT: "7777"
+      HUB_TOKEN: "CHANGE_ME_SUPERHUB_TOKEN"
+      HUB_PAIRING_ENABLED: "true"
+      HUB_ALLOWLIST_SUBNETS: "127.0.0.1/32,::1/128,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,fc00::/7"
+      HUB_VALIDATION_MODE: "reject"
+      HUB_LOG_LEVEL: "info"
+      HUB_ROUTE_DEBUG: "false"
+      HUB_PERSISTENCE_ENABLED: "true"
+      HUB_SQLITE_PATH: "/app/packages/hub/data/hub.sqlite"
+      HUB_AUDIT_ENABLED: "true"
+      HUB_AUDIT_TTL_DAYS: "14"
+      HUB_STATE_SNAPSHOT_FLUSH_MS: "250"
+      HUB_MAX_PENDING_STATE_SNAPSHOTS: "5000"
+      HUB_MAX_MESSAGE_SIZE_BYTES: "262144"
+      HUB_MAX_SESSION_BUFFER_MESSAGES: "400"
+      HUB_MAX_SESSION_BUFFERED_BYTES: "1048576"
+      HUB_DEDUP_WINDOW_MS: "10000"
+      HUB_HEARTBEAT_INTERVAL_MS: "10000"
+      HUB_HEARTBEAT_TIMEOUT_MS: "30000"
+      HUB_INSPECTOR_MAX_MESSAGES: "500"
+      HUB_RATE_LIMIT_PER_MINUTE: "120000"
+      HUB_CORS_ORIGINS: "https://code.samlepirate.org"
     ports:
       - "127.0.0.1:7777:7777"
     volumes:
