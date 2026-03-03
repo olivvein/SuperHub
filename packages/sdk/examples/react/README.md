@@ -18,6 +18,6 @@ export default function App() {
 Expected env vars (Vite):
 
 ```bash
-VITE_HUB_HTTP_URL=https://macbook-pro-de-olivier.local
+VITE_HUB_HTTP_URL=https://mac-mini-de-olivier.local
 VITE_HUB_TOKEN=CHANGE_ME_SUPERHUB_TOKEN
 ```

@@ -9,7 +9,7 @@ Ce runbook couvre les points ops critiques P1:
 
 - macOS avec `node`, `npm`, `caddy`
 - repo SuperHub clone localement
-- `macbook-pro-de-olivier.local` resolvable depuis les clients LAN
+- `mac-mini-de-olivier.local` resolvable depuis les clients LAN
 - token configure dans `.env` (ne pas garder `CHANGE_ME_SUPERHUB_TOKEN` en usage reel)
 
 ## 2. Demarrage local Hub + Caddy
@@ -36,7 +36,7 @@ caddy run --config deploy/Caddyfile
 Verification rapide:
 
 ```bash
-curl -k https://macbook-pro-de-olivier.local/api/health
+curl -k https://mac-mini-de-olivier.local/api/health
 ```
 
 ## 3. Trust CA locale sur macOS
@@ -58,7 +58,7 @@ sudo security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keyc
 3. Validation:
 
 ```bash
-curl https://macbook-pro-de-olivier.local/api/health
+curl https://mac-mini-de-olivier.local/api/health
 ```
 
 Si `curl` retourne encore une erreur TLS, verifier dans Keychain Access que le certificat est en `Always Trust`.
@@ -71,8 +71,8 @@ Si `curl` retourne encore une erreur TLS, verifier dans Keychain Access que le c
    - `Settings > General > About > Certificate Trust Settings`
 4. Activer `Full Trust` pour la CA locale Caddy.
 5. Rejoindre le meme LAN que le Mac mini, puis tester:
-   - `https://macbook-pro-de-olivier.local/console/`
-   - `https://macbook-pro-de-olivier.local/api/health`
+   - `https://mac-mini-de-olivier.local/console/`
+   - `https://mac-mini-de-olivier.local/api/health`
 
 ## 5. Supervision Hub (launchd, recommande)
 
@@ -164,14 +164,14 @@ pm2 startup
 ## 7. Smoke tests apres restart
 
 ```bash
-curl -sS https://macbook-pro-de-olivier.local/api/health
-curl -sS -H "X-Hub-Token: $HUB_TOKEN" https://macbook-pro-de-olivier.local/api/services
-curl -sS -H "X-Hub-Token: $HUB_TOKEN" https://macbook-pro-de-olivier.local/api/diagnostics
+curl -sS https://mac-mini-de-olivier.local/api/health
+curl -sS -H "X-Hub-Token: $HUB_TOKEN" https://mac-mini-de-olivier.local/api/services
+curl -sS -H "X-Hub-Token: $HUB_TOKEN" https://mac-mini-de-olivier.local/api/diagnostics
 ```
 
 Puis valider en navigateur:
-- `https://macbook-pro-de-olivier.local/console/`
-- `https://macbook-pro-de-olivier.local/console/pair`
+- `https://mac-mini-de-olivier.local/console/`
+- `https://mac-mini-de-olivier.local/console/pair`
 
 ## 8. Troubleshooting console realtime WS
 

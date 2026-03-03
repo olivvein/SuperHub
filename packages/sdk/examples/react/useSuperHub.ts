@@ -16,7 +16,7 @@ export function useSuperHub(options?: {
   const clientRef = useRef<HubClient | null>(null);
 
   const httpUrl = useMemo(
-    () => (import.meta.env.VITE_HUB_HTTP_URL || "https://macbook-pro-de-olivier.local").replace(/\/$/, ""),
+    () => (import.meta.env.VITE_HUB_HTTP_URL || "https://mac-mini-de-olivier.local").replace(/\/$/, ""),
     []
   );
   const token = useMemo(() => import.meta.env.VITE_HUB_TOKEN || "", []);

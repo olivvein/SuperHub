@@ -358,7 +358,7 @@ async function writePythonSimpleIndex(pythonMeta) {
 }
 
 async function writeIndex(nodeMeta, pythonMeta, certMeta, docsMeta) {
-  const host = "macbook-pro-de-olivier.local";
+  const host = "mac-mini-de-olivier.local";
   const certSection = certMeta
     ? `<div class="box">
       <h2>TLS bootstrap (clients)</h2>
@@ -451,7 +451,7 @@ async function main() {
   await writeIndex(nodeMeta, pythonMeta, certMeta, docsMeta);
 
   console.log("[client:dist] done");
-  console.log(`[client:dist] open: https://macbook-pro-de-olivier.local/apps/client/dist/`);
+  console.log(`[client:dist] open: https://mac-mini-de-olivier.local/apps/client/dist/`);
 }
 
 main().catch((error) => {

@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 const repoRoot = path.dirname(fileURLToPath(import.meta.url));
 
 const config = {
-  domain: "macbook-pro-de-olivier.local",
+  domain: "mac-mini-de-olivier.local",
   listen: {
     host: "127.0.0.1",
     port: 7777
@@ -15,7 +15,7 @@ const config = {
     allowlistSubnets: ["127.0.0.1/32", "::1/128", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "fc00::/7"]
   },
   cors: {
-    origins: ["https://macbook-pro-de-olivier.local"],
+    origins: ["https://mac-mini-de-olivier.local"],
     allowHeaders: ["Content-Type", "X-Hub-Token"]
   },
   limits: {

@@ -65,18 +65,18 @@ npm run dev
 4. Ouvrir la console:
 
 - en direct: `http://127.0.0.1:7777/console/`
-- via Caddy/TLS: `https://macbook-pro-de-olivier.local/console/`
-- pairing: `https://macbook-pro-de-olivier.local/console/pair`
+- via Caddy/TLS: `https://mac-mini-de-olivier.local/console/`
+- pairing: `https://mac-mini-de-olivier.local/console/pair`
 - dashboard realtime: WS interne auto (`/ws`) + fallback poll 5s
 
 ## Caddy + TLS local (LAN)
 
 1. Installer et lancer Caddy avec `deploy/Caddyfile`.
-2. Ajouter `macbook-pro-de-olivier.local` au DNS local (ou `/etc/hosts` pour tests).
+2. Ajouter `mac-mini-de-olivier.local` au DNS local (ou `/etc/hosts` pour tests).
 3. Faire confiance à la CA locale Caddy sur macOS et iOS.
 4. Vérifier:
-   - `https://macbook-pro-de-olivier.local/api/health`
-   - `wss://macbook-pro-de-olivier.local/ws`
+   - `https://mac-mini-de-olivier.local/api/health`
+   - `wss://mac-mini-de-olivier.local/ws`
 
 Procedure complete detaillee: `docs/OPS_RUNBOOK.md`.
 

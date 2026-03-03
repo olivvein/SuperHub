@@ -7,7 +7,7 @@ This guide is for Python projects using the `superhub-client` package.
 Install from LAN artifact:
 
 ```bash
-pip install --extra-index-url "https://macbook-pro-de-olivier.local/apps/client/dist/python/simple/" superhub-client
+pip install --extra-index-url "https://mac-mini-de-olivier.local/apps/client/dist/python/simple/" superhub-client
 ```
 
 Or install from local SuperHub checkout:
@@ -19,8 +19,8 @@ pip install -e /path/to/SuperHub/client/python-lib
 If pip fails on local TLS cert:
 
 ```bash
-curl -k "https://macbook-pro-de-olivier.local/apps/client/dist/certs/caddy-local-root.crt" -o "$HOME/.superhub-caddy-root.crt"
-PIP_CERT="$HOME/.superhub-caddy-root.crt" pip install --extra-index-url "https://macbook-pro-de-olivier.local/apps/client/dist/python/simple/" superhub-client
+curl -k "https://mac-mini-de-olivier.local/apps/client/dist/certs/caddy-local-root.crt" -o "$HOME/.superhub-caddy-root.crt"
+PIP_CERT="$HOME/.superhub-caddy-root.crt" pip install --extra-index-url "https://mac-mini-de-olivier.local/apps/client/dist/python/simple/" superhub-client
 ```
 
 Optional env template for ISS examples:
@@ -89,7 +89,7 @@ print(http.services())
 
 ## 4) Useful Env Vars
 
-- `HUB_HTTP_URL` default: `https://macbook-pro-de-olivier.local`
+- `HUB_HTTP_URL` default: `https://mac-mini-de-olivier.local`
 - `HUB_WS_URL` optional explicit WS URL
 - `HUB_TOKEN` shared token
 - `HUB_TLS_CA_FILE` custom CA path

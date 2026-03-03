@@ -5,7 +5,7 @@ import path from "node:path";
 import { HubClient, type HubClientOptions } from "@superhub/sdk";
 
 export function createNodeDevClient(options: Omit<HubClientOptions, "httpUrl" | "token" | "clientId" | "tls">): HubClient {
-  const httpUrl = (process.env.HUB_HTTP_URL || "https://macbook-pro-de-olivier.local").replace(/\/$/, "");
+  const httpUrl = (process.env.HUB_HTTP_URL || "https://mac-mini-de-olivier.local").replace(/\/$/, "");
   const useTls = httpUrl.startsWith("https://");
   const tlsInsecure = ["1", "true", "yes", "on"].includes((process.env.HUB_TLS_INSECURE || "").toLowerCase());
   const defaultCaddyCaFile = path.join(

@@ -91,7 +91,7 @@ Le monitor Node affiche:
 
 Les exemples sont configures pour parler au Hub local via Caddy/TLS:
 
-- `https://macbook-pro-de-olivier.local`
+- `https://mac-mini-de-olivier.local`
 
 Tu peux override avec `HUB_HTTP_URL` si besoin (par exemple `http://127.0.0.1:7777` sans Caddy).
 
