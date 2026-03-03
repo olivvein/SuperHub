@@ -32,7 +32,7 @@ services:
       HUB_RATE_LIMIT_PER_MINUTE: "120000"
       HUB_CORS_ORIGINS: "https://code.samlepirate.org"
     ports:
-      - "127.0.0.1:7777:7777"
+      - "7777:7777"
     volumes:
       - superhub_data:/app/packages/hub/data
 
