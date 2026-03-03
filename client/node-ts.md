@@ -1,6 +1,6 @@
 # Node.js + TypeScript Client Guide
 
-This guide is for Node services/scripts using `@superhub/sdk`.
+This guide is for Node services/scripts using `@olivvein/superhub-sdk`.
 
 ## 1) Prerequisites
 
@@ -10,7 +10,13 @@ This guide is for Node services/scripts using `@superhub/sdk`.
 
 ## 2) Install and Run
 
-Install from LAN artifact (no npm publish):
+Install from npm (recommended):
+
+```bash
+npm install @olivvein/superhub-sdk
+```
+
+Or install from LAN artifact:
 
 ```bash
 npm install "https://mac-mini-de-olivier.local/apps/client/dist/npm/superhub-sdk-latest.tgz"
@@ -28,7 +34,7 @@ Or install directly from a local SuperHub clone:
 npm install /path/to/SuperHub/packages/sdk
 ```
 
-In this monorepo, the SDK is already available through workspaces.
+In this monorepo, the SDK is already available through workspaces as `@superhub/sdk`.
 
 Run scripts with:
 
@@ -43,7 +49,7 @@ import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
-import { HubClient } from "@superhub/sdk";
+import { HubClient } from "@olivvein/superhub-sdk";
 
 const httpUrl = (process.env.HUB_HTTP_URL || "https://mac-mini-de-olivier.local").replace(/\/$/, "");
 const useTls = httpUrl.startsWith("https://");

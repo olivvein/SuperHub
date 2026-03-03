@@ -10,7 +10,13 @@ This guide is for React web apps using SuperHub in the browser.
 
 ## 2) Install SDK
 
-Install from LAN artifact (no npm publish):
+Install from npm (recommended):
+
+```bash
+npm install @olivvein/superhub-sdk
+```
+
+Or install from LAN artifact:
 
 ```bash
 npm install "https://mac-mini-de-olivier.local/apps/client/dist/npm/superhub-sdk-latest.tgz"
@@ -40,7 +46,7 @@ npm install /path/to/SuperHub/packages/sdk
 
 ```ts
 import { useEffect, useMemo, useRef, useState } from "react";
-import { HubClient } from "@superhub/sdk";
+import { HubClient } from "@olivvein/superhub-sdk";
 
 export function useHub() {
   const [connected, setConnected] = useState(false);

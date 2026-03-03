@@ -6,13 +6,21 @@
     "packages/*"
   ],
   "scripts": {
-    "build": "npm run --workspace @superhub/contracts build && npm run --workspace @superhub/sdk build && npm run --workspace @superhub/hub build",
+    "build": "npm run --workspace @superhub/contracts build && npm run --workspace packages/sdk build && npm run --workspace @superhub/hub build",
     "clean": "rm -rf packages/*/dist packages/*/*.tsbuildinfo",
     "dev": "npm run --workspace @superhub/hub dev",
-    "typecheck": "npm run --workspace @superhub/contracts build && npm run --workspace @superhub/contracts typecheck && npm run --workspace @superhub/sdk typecheck && npm run --workspace @superhub/hub typecheck",
+    "typecheck": "npm run --workspace @superhub/contracts build && npm run --workspace @superhub/contracts typecheck && npm run --workspace packages/sdk typecheck && npm run --workspace @superhub/hub typecheck",
     "test": "npm run build && node --test $(find tests -type f -name '*.test.mjs' | sort)",
     "diag": "node scripts/diagnostics.mjs",
-    "client:dist": "node scripts/build-client-distributions.mjs"
+    "client:dist": "node scripts/build-client-distributions.mjs",
+    "sdk:version:patch": "npm version patch --workspace packages/sdk",
+    "sdk:version:minor": "npm version minor --workspace packages/sdk",
+    "sdk:version:major": "npm version major --workspace packages/sdk",
+    "sdk:prepublish": "npm_config_cache=/tmp/.npm-cache npm run --workspace packages/sdk build && npm_config_cache=/tmp/.npm-cache npm pack --workspace packages/sdk --dry-run",
+    "publish:sdk": "npm run sdk:prepublish && npm_config_cache=/tmp/.npm-cache npm publish --workspace packages/sdk --access public",
+    "release:sdk:patch": "npm run sdk:version:patch && npm run publish:sdk",
+    "release:sdk:minor": "npm run sdk:version:minor && npm run publish:sdk",
+    "release:sdk:major": "npm run sdk:version:major && npm run publish:sdk"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.13",

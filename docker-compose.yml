@@ -30,7 +30,7 @@ services:
       HUB_HEARTBEAT_TIMEOUT_MS: "30000"
       HUB_INSPECTOR_MAX_MESSAGES: "500"
       HUB_RATE_LIMIT_PER_MINUTE: "120000"
-      HUB_CORS_ORIGINS: "https://samlepirate.org,https://www.samlepirate.org,https://code.samlepirate.org"
+      HUB_CORS_ORIGINS: "*"
     ports:
       - "7777:7777"
     volumes:

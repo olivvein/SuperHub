@@ -29,6 +29,22 @@ Use these docs when building new apps that connect to SuperHub over HTTPS/WSS.
 - Python: `client/python.md`
 - React: `client/react.md`
 
+## Public npm Package (TypeScript SDK)
+
+Current public package:
+
+```bash
+npm install @olivvein/superhub-sdk
+```
+
+Import in external Node/React apps:
+
+```ts
+import { HubClient } from "@olivvein/superhub-sdk";
+```
+
+In this monorepo, internal workspace code still uses `@superhub/sdk`.
+
 ## LAN Distribution (no npm/pip publish)
 
 Build distributable artifacts:
@@ -71,8 +87,8 @@ PIP_CERT="$HOME/.superhub-caddy-root.crt" pip install --extra-index-url "https:/
 
 ## Examples included in libs
 
-- Node/React (`@superhub/sdk`):
-  - bundled at `@superhub/sdk/examples/`
+- Node/React (`@olivvein/superhub-sdk`):
+  - bundled at `@olivvein/superhub-sdk/examples/`
   - scaffold into your project:
 
 ```bash
@@ -90,3 +106,23 @@ superhub-py-http-demo
 superhub-py-iss-provider
 superhub-py-iss-updater --hz 10
 ```
+
+## Publish to npm (SDK)
+
+From the repository root:
+
+```bash
+npm_config_cache=/tmp/.npm-cache npm whoami || npm_config_cache=/tmp/.npm-cache npm login
+npm run release:sdk:patch
+# or: npm run release:sdk:minor
+# or: npm run release:sdk:major
+```
+
+Publish only (version already bumped):
+
+```bash
+npm run publish:sdk
+```
+
+Detailed guide and troubleshooting:
+- `docs/SDK_NPM_PUBLISH_GUIDE.md`

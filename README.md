@@ -7,6 +7,7 @@ Hub local HTTPS/WSS pour projets perso (Mac mini, Node.js/TypeScript).
 - Statut implementation + reste a faire: `docs/IMPLEMENTATION_STATUS.md`
 - Worklog complet des evolutions: `docs/WORKLOG_2026-03-01.md`
 - Runbook ops (TLS local, trust iOS/macOS, supervision): `docs/OPS_RUNBOOK.md`
+- Guide publication npm SDK: `docs/SDK_NPM_PUBLISH_GUIDE.md`
 - Guide dev exemples music: `examples/README.md`
 - Guide dev exemples Python: `examples/python/README.md`
 - Guide clients (Node/TS, Python, React): `client/README.md`
@@ -151,6 +152,17 @@ Distribution clients LAN (sans npm/pip publish):
 ```bash
 npm run client:dist
 ```
+
+SDK npm public (TypeScript):
+
+```bash
+npm install @olivvein/superhub-sdk
+```
+
+Publication/maintenance SDK:
+- voir `client/README.md` (section `Publish to npm (SDK)`)
+- voir `packages/sdk/README.md`
+- voir `docs/SDK_NPM_PUBLISH_GUIDE.md`
 
 ## Notes V1
 

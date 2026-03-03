@@ -2467,6 +2467,10 @@ function isPathWithinRoot(rootDir: string, filePath: string): boolean {
 }
 
 function isCorsOriginAllowed(origin: string, configuredOrigins: string[]): boolean {
+  if (configuredOrigins.includes("*")) {
+    return true;
+  }
+
   if (configuredOrigins.includes(origin)) {
     return true;
   }
