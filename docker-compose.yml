@@ -12,8 +12,6 @@ services:
       HUB_PORT: 7777
       HUB_CORS_ORIGINS: https://code.samlepirate.org
       HUB_SQLITE_PATH: /app/packages/hub/data/hub.sqlite
-    env_file:
-      - .env
     ports:
       - "127.0.0.1:7777:7777"
     volumes:
