@@ -20,7 +20,7 @@ def new_id() -> str:
 
 
 def default_http_url() -> str:
-    return os.getenv("HUB_HTTP_URL", "https://macbook-pro-de-olivier.local").rstrip("/")
+    return os.getenv("HUB_HTTP_URL", "https://mac-mini-de-olivier.local").rstrip("/")
 
 
 def default_ws_url(http_url: str) -> str:

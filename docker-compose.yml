@@ -7,12 +7,13 @@ services:
     restart: unless-stopped
     environment:
       NODE_ENV: production
-      HUB_DOMAIN: ${HUB_DOMAIN:-code.samlepirate.org}
+      HUB_DOMAIN: code.samlepirate.org
       HUB_HOST: 0.0.0.0
-      HUB_PORT: ${HUB_PORT:-7777}
-      HUB_CORS_ORIGINS: ${HUB_CORS_ORIGINS:-https://code.samlepirate.org}
+      HUB_PORT: 7777
+      HUB_CORS_ORIGINS: https://code.samlepirate.org
       HUB_SQLITE_PATH: /app/packages/hub/data/hub.sqlite
-      HUB_TOKEN: ${HUB_TOKEN:-CHANGE_ME_SUPERHUB_TOKEN}
+    env_file:
+      - .env
     ports:
       - "127.0.0.1:7777:7777"
     volumes:

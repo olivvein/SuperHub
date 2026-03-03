@@ -7,6 +7,7 @@
   ],
   "scripts": {
     "build": "npm run --workspace @superhub/contracts build && npm run --workspace @superhub/sdk build && npm run --workspace @superhub/hub build",
+    "clean": "rm -rf packages/*/dist packages/*/*.tsbuildinfo",
     "dev": "npm run --workspace @superhub/hub dev",
     "typecheck": "npm run --workspace @superhub/contracts build && npm run --workspace @superhub/contracts typecheck && npm run --workspace @superhub/sdk typecheck && npm run --workspace @superhub/hub typecheck",
     "test": "npm run build && node --test $(find tests -type f -name '*.test.mjs' | sort)",
@@ -16,6 +17,7 @@
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.13",
     "@types/js-yaml": "^4.0.9",
+    "@types/ws": "^8.18.1",
     "typescript": "^5.7.3"
   }
 }

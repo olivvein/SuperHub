@@ -4,7 +4,7 @@ import { homedir } from "node:os";
 import path from "node:path";
 import { HubClient } from "@superhub/sdk";
 
-const hubHttpUrl = (process.env.HUB_HTTP_URL || "https://macbook-pro-de-olivier.local").replace(/\/$/, "");
+const hubHttpUrl = (process.env.HUB_HTTP_URL || "https://mac-mini-de-olivier.local").replace(/\/$/, "");
 const useTls = hubHttpUrl.startsWith("https://");
 const tlsInsecure = ["1", "true", "yes", "on"].includes((process.env.HUB_TLS_INSECURE || "").toLowerCase());
 const defaultCaddyCaFile = path.join(homedir(), "Library", "Application Support", "Caddy", "pki", "authorities", "local", "root.crt");

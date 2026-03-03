@@ -70,7 +70,7 @@ HUB_TOKEN=CHANGE_ME_SUPERHUB_TOKEN python examples/python/http_api_demo.py
 
 ## Environment variables
 
-- `HUB_HTTP_URL` (default: `https://macbook-pro-de-olivier.local`)
+- `HUB_HTTP_URL` (default: `https://mac-mini-de-olivier.local`)
 - `HUB_WS_URL` (optional; auto-derived from `HUB_HTTP_URL`)
 - `HUB_TOKEN` (optional if hub has no token)
 - `CLIENT_ID` (optional; auto-generated if missing)
@@ -115,6 +115,6 @@ Published by updater:
 
 - WS auth uses `?token=` query param (compatible with current hub auth).
 - For TLS/local domain usage, set:
-  - `HUB_HTTP_URL=https://macbook-pro-de-olivier.local`
+  - `HUB_HTTP_URL=https://mac-mini-de-olivier.local`
   - `HUB_TLS_CA_FILE=$HOME/Library/Application Support/Caddy/pki/authorities/local/root.crt`
   - trust CA first (`docs/OPS_RUNBOOK.md`).
