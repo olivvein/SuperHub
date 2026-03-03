@@ -12,7 +12,7 @@ services:
       HUB_PORT: "7777"
       HUB_TOKEN: "${HUB_TOKEN}"
       HUB_PAIRING_ENABLED: "true"
-      HUB_ALLOWLIST_SUBNETS: "127.0.0.1/32,::1/128,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,fc00::/7"
+      HUB_ALLOWLIST_SUBNETS: "*"
       HUB_VALIDATION_MODE: "reject"
       HUB_LOG_LEVEL: "info"
       HUB_ROUTE_DEBUG: "false"
@@ -30,7 +30,7 @@ services:
       HUB_HEARTBEAT_TIMEOUT_MS: "30000"
       HUB_INSPECTOR_MAX_MESSAGES: "500"
       HUB_RATE_LIMIT_PER_MINUTE: "120000"
-      HUB_CORS_ORIGINS: "https://code.samlepirate.org"
+      HUB_CORS_ORIGINS: "https://samlepirate.org,https://www.samlepirate.org,https://code.samlepirate.org"
     ports:
       - "7777:7777"
     volumes:
